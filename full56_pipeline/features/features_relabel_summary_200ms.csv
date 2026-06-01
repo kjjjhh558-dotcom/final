@@ -1,0 +1,6 @@
+source_label,source_files,source_frames,active_breath_frames,relabeled_noise_frames,original_noise_frames,active_ratio
+mouth_exhale,343,4459,2152,2307,0,0.4826194213949316
+mouth_inhale,342,4446,2393,2053,0,0.5382366171839856
+nasal_exhale,387,5031,2541,2490,0,0.5050685748360167
+nasal_inhale,389,5057,2597,2460,0,0.5135455803836266
+noise,450,14190,0,0,14190,0.0

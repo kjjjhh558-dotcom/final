@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+backups/
+stm32_workspace/.metadata/
+mouthnose/Release/
+full56_pipeline/stm32_candidate/full56/stedgeai_runs/

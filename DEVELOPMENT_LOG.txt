@@ -1,0 +1,15 @@
+[2026-06-01 13:42 KST]
+- 기존 마이크수신 작업공간을 건드리지 않고 독립 실행용 final 작업공간을 생성했다.
+- 현재 ICS-43434, full56 Tiny MLP, STM32 펌웨어, CMSIS-DSP, BLE-UART 브리지, 펌프 제어에 필요한 파일만 선별했다.
+- legacy, 과거 fallback, 대규모 모델 실험 결과, 발표 자료, Release 빌드 산출물은 제외했다.
+- full56 경로를 200ms+mfcc_delta에서 full56_pipeline으로 정리했다.
+- 다른 노트북에서 현재 폴더 위치를 기준으로 Release 빌드와 ST-LINK 플래시를 수행하는 PowerShell 래퍼를 추가했다.
+- 펌웨어 자산 재설치 백업 위치를 mouthnose 내부가 아니라 backups/firmware_assets 아래로 분리했다.
+- README.md, PROJECT_STRUCTURE.md, PIPELINE_COMMANDS.md와 하위 README를 한국어로 작성했다.
+
+[2026-06-01 13:47 KST]
+- final 작업공간 자체의 stm32_workspace를 사용해 STM32CubeIDE Release clean build를 검증했다.
+- 빌드 결과는 0 errors, 0 warnings이며 text=330944 B, data=2452 B, bss=98772 B였다.
+- 새 노트북에서 즉시 플래시할 수 있도록 최신 ELF만 firmware_release/mouthnose.elf에 보존했다.
+- build_firmware.ps1가 빌드 성공 후 ELF 스냅샷을 자동 갱신하도록 했다.
+- flash_firmware.ps1가 Release ELF가 없으면 firmware_release ELF를 사용하도록 했다.

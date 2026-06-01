@@ -1,0 +1,6 @@
+actual,mouth_exhale,mouth_inhale,nasal_exhale,nasal_inhale,noise
+mouth_exhale,329,44,0,0,44
+mouth_inhale,79,354,6,2,40
+nasal_exhale,4,12,335,72,79
+nasal_inhale,11,0,139,292,89
+noise,207,191,291,259,3746
