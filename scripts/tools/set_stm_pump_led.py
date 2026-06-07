@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
-"""Enable or disable the STM32 pump-action indicator LED logic."""
+"""STM32 펌프 동작 표시 LED 자동 로직을 USB CDC 명령으로 켜거나 끕니다.
+
+PLED ON/OFF 명령을 보내 AI mouth 계열 예측에 따른 펌프 표시 LED 정책을 현장에서 토글합니다."""
 
 from __future__ import annotations
 
@@ -14,6 +16,7 @@ except ImportError:
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
+    """펌프 표시 LED 자동 로직 on/off와 COM 포트 옵션을 읽습니다."""
     parser = argparse.ArgumentParser(description="Send PLED ON/OFF command to STM32 USB CDC firmware.")
     parser.add_argument("port", help="serial port, e.g. COM4")
     parser.add_argument("mode", choices=("on", "off"), help="pump-action indicator LED auto logic")
@@ -23,6 +26,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """STM32에 PLED ON/OFF 명령을 보내 펌프 표시 LED 정책을 토글합니다."""
     args = parse_args(sys.argv[1:] if argv is None else argv)
 
     if serial is None:

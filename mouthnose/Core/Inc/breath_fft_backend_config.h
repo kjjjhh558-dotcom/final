@@ -1,3 +1,9 @@
+/*
+ * 파일 설명:
+ *   STM32 DSP feature extractor에서 사용할 FFT backend를 선택합니다.
+ *   내부 radix-2 FFT와 CMSIS-DSP RFFT 중 하나를 고르며, 현재 기본값은 CMSIS-DSP입니다.
+ */
+
 #ifndef BREATH_FFT_BACKEND_CONFIG_H
 #define BREATH_FFT_BACKEND_CONFIG_H
 

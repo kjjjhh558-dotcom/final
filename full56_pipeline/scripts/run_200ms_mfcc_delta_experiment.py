@@ -1,9 +1,7 @@
 # -*- coding: utf-8 -*-
-"""Run an isolated 200 ms + MFCC delta experiment.
+"""200 ms 프레임과 MFCC delta/delta-delta를 사용하는 full56 학습 실험을 실행합니다.
 
-This script does not modify the production TinyML pipeline. It writes all
-features, models, and reports under the local full56_pipeline workspace.
-"""
+수집 WAV에서 활동 구간을 찾아 비활동 호흡 프레임을 noise로 재라벨링하고, 56차원 특징 CSV, Keras Tiny MLP, 프레임/파일 평가 리포트를 생성합니다."""
 
 from __future__ import annotations
 
@@ -112,6 +110,7 @@ TRAINING_HISTORY_CSV = WORKSPACE_DIR / "reports" / "mlp_200ms_mfcc_delta_trainin
 
 
 def configure_stdio() -> None:
+    """Windows 콘솔에서도 학습 로그와 경로가 UTF-8로 출력되도록 표준 스트림을 설정합니다."""
     for stream in (sys.stdout, sys.stderr):
         try:
             stream.reconfigure(encoding="utf-8")
@@ -120,6 +119,7 @@ def configure_stdio() -> None:
 
 
 def configure_tensorflow(seed: int):
+    """TensorFlow를 늦게 import하고 난수 seed를 고정해 실험 재현성을 높입니다."""
     os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
     import tensorflow as tf
 
@@ -130,6 +130,7 @@ def configure_tensorflow(seed: int):
 
 
 def frame_signal(audio: np.ndarray) -> list[tuple[int, np.ndarray]]:
+    """16 kHz 파형을 200 ms 프레임과 150 ms hop으로 잘라 full56 특징의 시간 단위를 만듭니다."""
     if audio.size < FRAME_SIZE:
         padded = np.zeros(FRAME_SIZE, dtype=np.float32)
         padded[: audio.size] = audio
@@ -142,6 +143,7 @@ def frame_signal(audio: np.ndarray) -> list[tuple[int, np.ndarray]]:
 
 
 def moving_average(values: np.ndarray, width: int) -> np.ndarray:
+    """프레임 RMS를 완만하게 만들어 호흡 활동 구간 판정이 순간 노이즈에 덜 흔들리게 합니다."""
     if values.size == 0 or width <= 1:
         return values.astype(np.float64, copy=True)
     pad_left = width // 2
@@ -152,6 +154,7 @@ def moving_average(values: np.ndarray, width: int) -> np.ndarray:
 
 
 def true_runs(mask: np.ndarray) -> list[tuple[int, int]]:
+    """boolean mask에서 연속 True 구간의 시작/끝 index 목록을 추출합니다."""
     runs: list[tuple[int, int]] = []
     start: int | None = None
     for index, value in enumerate(mask):
@@ -166,6 +169,7 @@ def true_runs(mask: np.ndarray) -> list[tuple[int, int]]:
 
 
 def merge_runs(runs: list[tuple[int, int]], max_gap: int) -> list[tuple[int, int]]:
+    """짧은 간격으로 떨어진 활동 구간을 하나로 합쳐 실제 한 번의 호흡 동작처럼 다룹니다."""
     if not runs:
         return []
     merged = [runs[0]]
@@ -179,6 +183,7 @@ def merge_runs(runs: list[tuple[int, int]], max_gap: int) -> list[tuple[int, int
 
 
 def build_activity_mask(frame_rms: np.ndarray) -> tuple[np.ndarray, np.ndarray, float]:
+    """RMS percentile 기반 동적 임계값으로 호흡이 실제로 발생한 프레임을 표시합니다."""
     if frame_rms.size == 0:
         return np.zeros(0, dtype=bool), np.zeros(0, dtype=np.float64), 0.0
 
@@ -203,22 +208,26 @@ def build_activity_mask(frame_rms: np.ndarray) -> tuple[np.ndarray, np.ndarray, 
 
 
 def zero_crossing_rate(frame: np.ndarray) -> float:
+    """프레임의 부호 전환 비율을 계산해 기본 time-domain 특징으로 사용합니다."""
     signs = np.signbit(frame)
     return float(np.mean(signs[1:] != signs[:-1]))
 
 
 def band_energy(freqs: np.ndarray, power: np.ndarray, low_hz: float, high_hz: float) -> float:
+    """지정 주파수 대역 power 합을 계산해 저/중/고역 energy 특징을 만듭니다."""
     mask = (freqs >= low_hz) & (freqs < high_hz)
     return float(np.sum(power[mask]))
 
 
 def compute_mfcc(power: np.ndarray, mel_filterbank: np.ndarray) -> np.ndarray:
+    """mel filterbank와 DCT로 13개 MFCC를 계산합니다."""
     mel_energy = mel_filterbank @ power
     log_mel_energy = np.log(mel_energy + EPS)
     return fftpack.dct(log_mel_energy, type=2, norm="ortho")[:NUM_MFCC].astype(np.float64)
 
 
 def delta_matrix(values: np.ndarray, width: int = DELTA_WIDTH) -> np.ndarray:
+    """프레임열의 MFCC 변화량 또는 변화량의 변화량을 중앙 차분 방식으로 계산합니다."""
     if values.size == 0:
         return values.copy()
     padded = np.pad(values, ((width, width), (0, 0)), mode="edge")
@@ -230,6 +239,7 @@ def delta_matrix(values: np.ndarray, width: int = DELTA_WIDTH) -> np.ndarray:
 
 
 def base_features(frame: np.ndarray, window: np.ndarray, mel_filterbank: np.ndarray) -> tuple[dict[str, float], np.ndarray]:
+    """한 프레임에서 17개 static DSP 특징과 MFCC 벡터를 계산합니다."""
     rms = float(np.sqrt(np.mean(frame * frame) + EPS))
     log_rms = float(np.log(rms + EPS))
     zcr = zero_crossing_rate(frame)
@@ -281,6 +291,7 @@ def base_features(frame: np.ndarray, window: np.ndarray, mel_filterbank: np.ndar
 
 
 def extract_one_file(record, sos: np.ndarray, window: np.ndarray, mel_filterbank: np.ndarray) -> list[dict[str, object]]:
+    """WAV 하나를 필터링/프레이밍하고 활동 구간 재라벨링, MFCC delta/delta2까지 생성합니다."""
     audio = ef.read_wav_as_float32(record.wav_path, SAMPLE_RATE)
     filtered = signal.sosfilt(sos, audio).astype(np.float32)
     framed = frame_signal(filtered)
@@ -337,6 +348,7 @@ def extract_one_file(record, sos: np.ndarray, window: np.ndarray, mel_filterbank
 
 
 def build_relabel_summary(df: pd.DataFrame) -> pd.DataFrame:
+    """호흡 원본 라벨 중 비활동으로 noise 처리된 프레임 비율을 파일/라벨별로 요약합니다."""
     rows = []
     for source_label, group in df.groupby("source_label", sort=True):
         source_frames = int(len(group))
@@ -355,6 +367,7 @@ def build_relabel_summary(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def extract_dataset(dataset_dir: Path) -> pd.DataFrame:
+    """데이터셋 전체 WAV에서 full56 feature DataFrame을 생성합니다."""
     records, _resolved_dirs = ef.discover_wav_files_from_sources([dataset_dir], split="all")
     if not records:
         raise FileNotFoundError(f"no wav files found under {dataset_dir}")
@@ -374,11 +387,13 @@ def extract_dataset(dataset_dir: Path) -> pd.DataFrame:
 
 
 def prepare_feature_matrix(df: pd.DataFrame, feature_columns: list[str]) -> np.ndarray:
+    """학습에 사용할 feature 컬럼만 골라 NaN/inf를 0으로 보정한 float32 행렬로 바꿉니다."""
     x = df[feature_columns].replace([np.inf, -np.inf], np.nan).fillna(0.0)
     return x.to_numpy(dtype=np.float32)
 
 
 def class_weight_dict(y_encoded: np.ndarray, labels: list[str], noise_weight_multiplier: float) -> dict[int, float]:
+    """클래스 불균형을 보정하고 noise 라벨 가중치를 추가로 조절하는 Keras class_weight를 만듭니다."""
     classes, counts = np.unique(y_encoded, return_counts=True)
     total = float(len(y_encoded))
     n_classes = float(len(classes))
@@ -391,6 +406,7 @@ def class_weight_dict(y_encoded: np.ndarray, labels: list[str], noise_weight_mul
 
 
 def parse_hidden_layers(text: str) -> list[int]:
+    """16,8 같은 문자열을 Tiny MLP 은닉층 크기 리스트로 검증 변환합니다."""
     values = [int(part.strip()) for part in text.split(",") if part.strip()]
     if not values or any(value <= 0 for value in values):
         raise ValueError("--hidden-layers must be a comma-separated list of positive integers")
@@ -398,6 +414,7 @@ def parse_hidden_layers(text: str) -> list[int]:
 
 
 def build_model(tf, feature_count: int, hidden_layers: list[int], learning_rate: float):
+    """Normalization 레이어와 Dense 은닉층으로 full56 Tiny MLP Keras 모델을 구성합니다."""
     inputs = tf.keras.Input(shape=(feature_count,), name="features")
     normalizer = tf.keras.layers.Normalization(axis=-1, name="feature_normalization")
     x = normalizer(inputs)
@@ -414,6 +431,7 @@ def build_model(tf, feature_count: int, hidden_layers: list[int], learning_rate:
 
 
 def aggregate_file_predictions(frame_predictions: pd.DataFrame) -> pd.DataFrame:
+    """프레임 예측을 파일 단위 다수결로 합쳐 실제 사용 관점의 파일 정확도를 계산합니다."""
     rows = []
     for file_id, group in frame_predictions.groupby("path", sort=True):
         true_label = group["source_label"].mode().iloc[0]
@@ -443,6 +461,7 @@ def aggregate_file_predictions(frame_predictions: pd.DataFrame) -> pd.DataFrame:
 
 
 def route(label: str) -> str:
+    """라벨을 mouth/nasal/noise 경로 축으로 단순화해 route 정확도를 계산할 수 있게 합니다."""
     if label.startswith("mouth_"):
         return "mouth"
     if label.startswith("nasal_"):
@@ -453,6 +472,7 @@ def route(label: str) -> str:
 
 
 def phase(label: str) -> str:
+    """라벨을 inhale/exhale/noise 위상 축으로 단순화해 phase 정확도를 계산할 수 있게 합니다."""
     if label.endswith("_exhale"):
         return "exhale"
     if label.endswith("_inhale"):
@@ -463,6 +483,7 @@ def phase(label: str) -> str:
 
 
 def route_phase_metrics(frame_predictions: pd.DataFrame, file_predictions: pd.DataFrame) -> dict[str, float]:
+    """프레임과 파일 단위에서 호흡 경로와 들숨/날숨 구분 정확도를 추가 지표로 계산합니다."""
     active = frame_predictions[
         frame_predictions["source_label"].isin(BREATH_LABELS)
         & (frame_predictions["breath_active"].astype(int) > 0)
@@ -481,6 +502,7 @@ def route_phase_metrics(frame_predictions: pd.DataFrame, file_predictions: pd.Da
     file_pred_breath = breath_files[breath_files["pred_label"].isin(BREATH_LABELS)].copy()
 
     def mean_bool(series: pd.Series) -> float:
+        """비어 있는 Series에서도 안전하게 boolean 평균을 계산합니다."""
         return float(series.mean()) if len(series) else 0.0
 
     return {
@@ -498,6 +520,7 @@ def route_phase_metrics(frame_predictions: pd.DataFrame, file_predictions: pd.Da
 
 
 def main(argv: list[str] | None = None) -> int:
+    """feature 생성/재사용, 모델 학습, 평가 리포트 저장까지 full56 실험 전체를 실행합니다."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type=Path, default=PROJECT_ROOT / "dataset_ics43434")
     parser.add_argument("--hidden-layers", default="16,8")

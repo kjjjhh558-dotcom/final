@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+"""STM32 오디오 스트림과 PC 측 실시간 검증 결과를 그래프로 확인합니다.
+
+USB CDC 오디오 패킷을 읽어 raw/filtered 파형, RMS/peak-to-peak, 선택적 PC 모델 예측을 표시하고 WAV 저장이나 오디오 재생도 지원합니다."""
+
 # 파일 설명: STM32 raw 오디오와 PC 모델 예측을 실시간 그래프로 확인합니다.
 #
 # realtime_signal_monitor.py
@@ -106,12 +110,14 @@ LABEL_COLORS = {
 
 # 클래스 설명: 'DependencyError' 예외 상황을 표현하는 전용 오류 타입입니다.
 class DependencyError(RuntimeError):
+    """DependencyError는 선택 의존성이 없을 때 사용자에게 설치 안내를 주기 위한 전용 예외입니다."""
     pass
 
 
 # 클래스 설명: 'AudioPacket' 관련 데이터를 묶고 전달하거나 상태를 관리하는 구조입니다.
 @dataclass(frozen=True)
 class AudioPacket:
+    """AudioPacket는 펌웨어나 센서에서 받은 한 개 패킷의 필드를 묶어 전달하는 데이터 구조입니다."""
     seq: int
     samples: int
     adc: np.ndarray
@@ -121,6 +127,7 @@ class AudioPacket:
 # 클래스 설명: 'MonitorStats' 관련 데이터를 묶고 전달하거나 상태를 관리하는 구조입니다.
 @dataclass
 class MonitorStats:
+    """MonitorStats는 실시간 처리 중 누적되는 상태값과 통계를 보관합니다."""
     total_packets: int = 0
     dropped_packets: int = 0
     inserted_samples: int = 0
@@ -136,6 +143,7 @@ class MonitorStats:
 # 클래스 설명: 'PredictionState' 관련 데이터를 묶고 전달하거나 상태를 관리하는 구조입니다.
 @dataclass
 class PredictionState:
+    """PredictionState는 실시간 처리 중 누적되는 상태값과 통계를 보관합니다."""
     frame_index: int = 0
     pred_label: str = ""
     confidence: float = float("nan")
@@ -149,6 +157,7 @@ class PredictionState:
 
 # 함수 설명: 실행 환경이나 출력 형식을 현재 작업에 맞게 설정합니다.
 def configure_utf8_stdio() -> None:
+    """실행 환경, 출력 인코딩, 라이브러리 옵션처럼 본 처리 전에 필요한 설정을 적용합니다."""
     for stream in (sys.stdout, sys.stderr):
         try:
             stream.reconfigure(encoding="utf-8")
@@ -158,6 +167,7 @@ def configure_utf8_stdio() -> None:
 
 # 함수 설명: 실행 환경이나 출력 형식을 현재 작업에 맞게 설정합니다.
 def send_board_ai_inference_command(ser: serial.Serial, mode: str) -> None:
+    """STM32나 보조 보드로 한 줄 제어 명령을 보내고 전송 버퍼를 비웁니다."""
     if mode == "keep":
         return
 
@@ -168,6 +178,7 @@ def send_board_ai_inference_command(ser: serial.Serial, mode: str) -> None:
 
 
 def configure_matplotlib_font(enabled: bool) -> None:
+    """실행 환경, 출력 인코딩, 라이브러리 옵션처럼 본 처리 전에 필요한 설정을 적용합니다."""
     if not enabled or plt is None:
         return
 
@@ -183,6 +194,7 @@ def configure_matplotlib_font(enabled: bool) -> None:
 
 # 함수 설명: 파일, 시리얼, 모델, 설정 등 외부 입력을 읽어 메모리에 올립니다.
 def read_exact(ser: serial.Serial, size: int, timeout_sec: float = 2.0) -> bytes:
+    """시리얼 포트에서 지정한 byte 수가 모일 때까지 읽고 timeout 시 오류를 냅니다."""
     deadline = time.monotonic() + timeout_sec
     chunks: list[bytes] = []
     received = 0
@@ -203,12 +215,15 @@ def read_exact(ser: serial.Serial, size: int, timeout_sec: float = 2.0) -> bytes
 # 클래스 설명: 'PacketReceiver' 관련 데이터를 묶고 전달하거나 상태를 관리하는 구조입니다.
 class PacketReceiver:
     # 함수 설명: '__init__' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
+    """PacketReceiver는 시리얼 byte stream에서 필요한 packet을 동기화하고 파싱합니다."""
     def __init__(self, ser: serial.Serial, max_packet_samples: int) -> None:
+        """PacketReceiver 인스턴스가 사용할 버퍼, 파일 핸들, 장치 상태를 초기화합니다."""
         self.ser = ser
         self.max_packet_samples = max_packet_samples
 
     # 함수 설명: 입력 스트림이나 목록에서 필요한 위치와 대상을 찾아 동기화합니다.
     def sync_to_magic(self) -> None:
+        """시리얼 stream에서 packet 시작을 나타내는 magic word까지 byte를 버리며 동기화합니다."""
         sync = bytearray()
         while True:
             byte = self.ser.read(1)
@@ -224,6 +239,7 @@ class PacketReceiver:
 
     # 함수 설명: 파일, 시리얼, 모델, 설정 등 외부 입력을 읽어 메모리에 올립니다.
     def read_packet(self) -> AudioPacket:
+        """동기화된 시리얼 stream에서 header와 payload를 읽어 packet 객체로 변환합니다."""
         self.sync_to_magic()
         rest = read_exact(self.ser, HEADER_SIZE - 4)
         seq, samples, reserved = struct.unpack("<IHH", rest)
@@ -240,7 +256,9 @@ class PacketReceiver:
 # 클래스 설명: 'WavPcmWriter' 관련 데이터를 묶고 전달하거나 상태를 관리하는 구조입니다.
 class WavPcmWriter:
     # 함수 설명: '__init__' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
+    """WavPcmWriter는 수집 또는 모니터링 결과를 파일로 안전하게 기록합니다."""
     def __init__(self, path: Path, sample_rate: int) -> None:
+        """WavPcmWriter 인스턴스가 사용할 버퍼, 파일 핸들, 장치 상태를 초기화합니다."""
         path.parent.mkdir(parents=True, exist_ok=True)
         self.path = path
         self.wav = wave.open(str(path), "wb")
@@ -250,17 +268,21 @@ class WavPcmWriter:
 
     # 함수 설명: 계산된 결과나 데이터를 파일 또는 출력 장치에 저장합니다.
     def write(self, pcm: np.ndarray) -> None:
+        """WavPcmWriter.write는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
         if pcm.size:
             self.wav.writeframes(pcm.astype("<i2", copy=False).tobytes())
 
     # 함수 설명: 'close' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
     def close(self) -> None:
+        """열어 둔 파일, 오디오 장치, 스레드 등 외부 자원을 정리합니다."""
         self.wav.close()
 
 
 # 클래스 설명: sounddevice OutputStream을 통해 PCM16 오디오를 실시간으로 재생합니다.
 class AudioPlayer:
+    """AudioPlayer는 수신한 PCM 오디오를 PC에서 실시간 재생하기 위한 보조 구성 요소입니다."""
     def __init__(self, sample_rate: int, max_buffered_chunks: int = 16) -> None:
+        """AudioPlayer 인스턴스가 사용할 버퍼, 파일 핸들, 장치 상태를 초기화합니다."""
         self._rate = sample_rate
         self._chunks: deque[np.ndarray] = deque()
         self._lock = threading.Lock()
@@ -269,6 +291,7 @@ class AudioPlayer:
         self._stream = None
 
     def start(self) -> None:
+        """AudioPlayer.start는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
         try:
             import sounddevice as sd
         except ImportError as exc:
@@ -285,6 +308,7 @@ class AudioPlayer:
         self._stream.start()
 
     def _callback(self, outdata: np.ndarray, frames: int, time_info, status) -> None:
+        """AudioPlayer._callback는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
         filled = 0
         with self._lock:
             while filled < frames:
@@ -300,6 +324,7 @@ class AudioPlayer:
             outdata[filled:, 0] = 0
 
     def push(self, pcm_i16: np.ndarray) -> None:
+        """AudioPlayer.push는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
         chunk = np.asarray(pcm_i16, dtype=np.int16).copy()
         with self._lock:
             if len(self._chunks) >= self._max_chunks:
@@ -307,6 +332,7 @@ class AudioPlayer:
             self._chunks.append(chunk)
 
     def close(self) -> None:
+        """열어 둔 파일, 오디오 장치, 스레드 등 외부 자원을 정리합니다."""
         if self._stream is not None:
             try:
                 self._stream.stop()
@@ -319,7 +345,9 @@ class AudioPlayer:
 # 클래스 설명: 'RollingSignalBuffer' 관련 데이터를 묶고 전달하거나 상태를 관리하는 구조입니다.
 class RollingSignalBuffer:
     # 함수 설명: '__init__' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
+    """RollingSignalBuffer는 이 모듈에서 관련 데이터와 동작을 묶어 관리하는 구성 요소입니다."""
     def __init__(self, sample_rate: int, window_sec: float) -> None:
+        """RollingSignalBuffer 인스턴스가 사용할 버퍼, 파일 핸들, 장치 상태를 초기화합니다."""
         self.sample_rate = sample_rate
         self.window_sec = window_sec
         self.max_samples = max(1, int(round(sample_rate * window_sec)))
@@ -330,6 +358,7 @@ class RollingSignalBuffer:
 
     # 함수 설명: 'append' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
     def append(self, raw_centered: np.ndarray, filtered: np.ndarray) -> None:
+        """RollingSignalBuffer.append는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
         n = int(min(raw_centered.size, filtered.size))
         if n <= 0:
             return
@@ -358,6 +387,7 @@ class RollingSignalBuffer:
 
     # 함수 설명: 'display_view' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
     def display_view(self, max_points: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """RollingSignalBuffer.display_view는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
         count = int(min(self.total_samples, self.max_samples))
         if count <= 0:
             return (
@@ -384,7 +414,9 @@ class RollingSignalBuffer:
 # 클래스 설명: 'RealtimeSignalPlotter' 동작에 필요한 상태와 메서드를 묶는 클래스입니다.
 class RealtimeSignalPlotter:
     # 함수 설명: '__init__' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
+    """RealtimeSignalPlotter는 이 모듈에서 관련 데이터와 동작을 묶어 관리하는 구성 요소입니다."""
     def __init__(self, args: argparse.Namespace, model_labels: list[str]) -> None:
+        """RealtimeSignalPlotter 인스턴스가 사용할 버퍼, 파일 핸들, 장치 상태를 초기화합니다."""
         global plt
         if plt is None:
             import matplotlib
@@ -450,6 +482,7 @@ class RealtimeSignalPlotter:
 
     # 함수 설명: 'is_open' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
     def is_open(self) -> bool:
+        """현재 값이나 실행 환경이 조건을 만족하는지 boolean으로 판정합니다."""
         return plt.fignum_exists(self.fig.number)
 
     # 함수 설명: 시각화 화면이나 그래프 상태를 새 데이터에 맞게 갱신합니다.
@@ -461,6 +494,7 @@ class RealtimeSignalPlotter:
         current_rms: float,
         current_p2p_adc: float,
     ) -> None:
+        """RealtimeSignalPlotter.update는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
         elapsed = max(0.0, rolling.total_samples / SAMPLE_RATE)
         time_axis, raw_view, filtered_view = rolling.display_view(self.args.max_plot_points)
         self.raw_line.set_data(time_axis, raw_view)
@@ -524,7 +558,9 @@ class RealtimeSignalPlotter:
 # 클래스 설명: 'TkSignalPlotter' 동작에 필요한 상태와 메서드를 묶는 클래스입니다.
 class TkSignalPlotter:
     # 함수 설명: '__init__' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
+    """TkSignalPlotter는 이 모듈에서 관련 데이터와 동작을 묶어 관리하는 구성 요소입니다."""
     def __init__(self, args: argparse.Namespace, model_labels: list[str]) -> None:
+        """TkSignalPlotter 인스턴스가 사용할 버퍼, 파일 핸들, 장치 상태를 초기화합니다."""
         import tkinter as tk
 
         self.tk = tk
@@ -555,6 +591,7 @@ class TkSignalPlotter:
 
     # 함수 설명: 'close' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
     def close(self) -> None:
+        """열어 둔 파일, 오디오 장치, 스레드 등 외부 자원을 정리합니다."""
         self.closed = True
         try:
             self.root.destroy()
@@ -563,6 +600,7 @@ class TkSignalPlotter:
 
     # 함수 설명: 'is_open' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
     def is_open(self) -> bool:
+        """현재 값이나 실행 환경이 조건을 만족하는지 boolean으로 판정합니다."""
         if self.closed:
             return False
         try:
@@ -579,6 +617,7 @@ class TkSignalPlotter:
         current_rms: float,
         current_p2p_adc: float,
     ) -> None:
+        """TkSignalPlotter.update는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
         if not self.is_open():
             return
 
@@ -666,6 +705,7 @@ class TkSignalPlotter:
 
     # 함수 설명: 시각화 화면이나 그래프 상태를 새 데이터에 맞게 갱신합니다.
     def draw_panel_frame(self, x: int, y: int, w: int, h: int, title: str, ylabel: str) -> None:
+        """Tk 캔버스에 실시간 모니터링 패널이나 파형 요소를 그립니다."""
         c = self.canvas
         c.create_rectangle(x, y, x + w, y + h, outline="#dddddd", fill="#fbfbfb", tags="dyn")
         c.create_text(x + 8, y + 12, text=title, anchor="w", fill="#333333", tags="dyn")
@@ -688,6 +728,7 @@ class TkSignalPlotter:
         ylabel: str,
         color: str,
     ) -> None:
+        """Tk 캔버스에 실시간 모니터링 패널이나 파형 요소를 그립니다."""
         self.draw_panel_frame(x, y, w, h, title, ylabel)
         if values.size < 2:
             return
@@ -703,6 +744,7 @@ class TkSignalPlotter:
 
     # 함수 설명: 시각화 화면이나 그래프 상태를 새 데이터에 맞게 갱신합니다.
     def draw_level_panel(self, x: int, y: int, w: int, h: int) -> None:
+        """Tk 캔버스에 실시간 모니터링 패널이나 파형 요소를 그립니다."""
         self.draw_panel_frame(x, y, w, h, "Signal level history", "level")
         if len(self.level_times) < 2:
             return
@@ -743,6 +785,7 @@ class TkSignalPlotter:
         ymax: float,
         color: str,
     ) -> None:
+        """Tk 캔버스에 실시간 모니터링 패널이나 파형 요소를 그립니다."""
         if values.size < 2:
             return
         xs = x + ((t_rel + self.args.window_sec) / self.args.window_sec) * w
@@ -754,6 +797,7 @@ class TkSignalPlotter:
 
     # 함수 설명: 시각화 화면이나 그래프 상태를 새 데이터에 맞게 갱신합니다.
     def draw_probability_panel(self, x: int, y: int, w: int, h: int, pred: PredictionState) -> None:
+        """Tk 캔버스에 실시간 모니터링 패널이나 파형 요소를 그립니다."""
         self.draw_panel_frame(x, y, w, h, "Model probabilities", "prob")
         probabilities = pred.probabilities or {}
         n = max(1, len(self.model_labels))
@@ -774,6 +818,7 @@ class TkSignalPlotter:
 
 # 함수 설명: 'set_symmetric_ylim' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
 def set_symmetric_ylim(ax, values: np.ndarray, minimum: float) -> None:
+    """set_symmetric_ylim는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
     if values.size == 0:
         span = minimum
     else:
@@ -784,6 +829,7 @@ def set_symmetric_ylim(ax, values: np.ndarray, minimum: float) -> None:
 
 # 함수 설명: 'signal_span' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
 def signal_span(values: np.ndarray, minimum: float) -> float:
+    """signal_span는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
     if values.size == 0:
         return minimum
     return max(float(np.max(np.abs(values))) * 1.15, minimum)
@@ -791,11 +837,13 @@ def signal_span(values: np.ndarray, minimum: float) -> float:
 
 # 함수 설명: 'short_label' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
 def short_label(label: str) -> str:
+    """내부 상태값을 콘솔이나 그래프에 표시하기 좋은 문자열 또는 라벨로 변환합니다."""
     return LABEL_ICONS.get(label, "") + "\n" + label
 
 
 # 함수 설명: 'display_label' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
 def display_label(label: str, korean: bool = True) -> str:
+    """내부 상태값을 콘솔이나 그래프에 표시하기 좋은 문자열 또는 라벨로 변환합니다."""
     if not label:
         return ""
     name = LABEL_NAMES.get(label, label) if korean else label
@@ -804,18 +852,21 @@ def display_label(label: str, korean: bool = True) -> str:
 
 # 함수 설명: 'adc_to_float' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
 def adc_to_float(adc: np.ndarray, adc_center: int, pcm_gain: float) -> np.ndarray:
+    """보드에서 온 ADC/PCM sample을 표시, 저장, 재생에 맞는 PCM/float 형식으로 변환합니다."""
     centered = adc.astype(np.float32) - float(adc_center)
     return np.clip(centered * float(pcm_gain) / 32768.0, -1.0, 1.0).astype(np.float32)
 
 
 # 함수 설명: 'adc_to_pcm_i16' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
 def adc_to_pcm_i16(adc: np.ndarray, adc_center: int, pcm_gain: float) -> np.ndarray:
+    """보드에서 온 ADC/PCM sample을 표시, 저장, 재생에 맞는 PCM/float 형식으로 변환합니다."""
     centered = adc.astype(np.float32) - float(adc_center)
     pcm = np.clip(centered * float(pcm_gain), -32768, 32767)
     return pcm.astype("<i2")
 
 
 def resolve_packet_sample_format(packet: AudioPacket, requested: str) -> int:
+    """내부 상태값을 콘솔이나 그래프에 표시하기 좋은 문자열 또는 라벨로 변환합니다."""
     if requested == "pcm16":
         return AUDIO_FORMAT_PCM16
     if requested == "adc_u16":
@@ -824,11 +875,13 @@ def resolve_packet_sample_format(packet: AudioPacket, requested: str) -> int:
 
 
 def apply_pcm16_gain_float(pcm: np.ndarray, gain: float) -> np.ndarray:
+    """보드에서 온 ADC/PCM sample을 표시, 저장, 재생에 맞는 PCM/float 형식으로 변환합니다."""
     audio = pcm.astype(np.float32) * float(gain) / 32768.0
     return np.clip(audio, -1.0, 1.0)
 
 
 def apply_pcm16_gain_i16(pcm: np.ndarray, gain: float) -> np.ndarray:
+    """보드에서 온 ADC/PCM sample을 표시, 저장, 재생에 맞는 PCM/float 형식으로 변환합니다."""
     if float(gain) == 1.0:
         return pcm.astype("<i2", copy=True)
     scaled = np.rint(pcm.astype(np.float32) * float(gain))
@@ -837,6 +890,7 @@ def apply_pcm16_gain_i16(pcm: np.ndarray, gain: float) -> np.ndarray:
 
 
 def packet_to_float(packet: AudioPacket, requested: str, adc_center: int, pcm_gain: float, pcm16_gain: float) -> np.ndarray:
+    """보드에서 온 ADC/PCM sample을 표시, 저장, 재생에 맞는 PCM/float 형식으로 변환합니다."""
     sample_format = resolve_packet_sample_format(packet, requested)
     if sample_format == AUDIO_FORMAT_PCM16:
         return apply_pcm16_gain_float(packet.adc.view("<i2"), pcm16_gain)
@@ -844,6 +898,7 @@ def packet_to_float(packet: AudioPacket, requested: str, adc_center: int, pcm_ga
 
 
 def packet_to_pcm_i16(packet: AudioPacket, requested: str, adc_center: int, pcm_gain: float, pcm16_gain: float) -> np.ndarray:
+    """보드에서 온 ADC/PCM sample을 표시, 저장, 재생에 맞는 PCM/float 형식으로 변환합니다."""
     sample_format = resolve_packet_sample_format(packet, requested)
     if sample_format == AUDIO_FORMAT_PCM16:
         return apply_pcm16_gain_i16(packet.adc.view("<i2"), pcm16_gain)
@@ -851,6 +906,7 @@ def packet_to_pcm_i16(packet: AudioPacket, requested: str, adc_center: int, pcm_
 
 
 def packet_to_centered_debug(packet: AudioPacket, requested: str, adc_center: int) -> np.ndarray:
+    """보드에서 온 ADC/PCM sample을 표시, 저장, 재생에 맞는 PCM/float 형식으로 변환합니다."""
     sample_format = resolve_packet_sample_format(packet, requested)
     if sample_format == AUDIO_FORMAT_PCM16:
         return packet.adc.view("<i2").astype(np.float32)
@@ -859,6 +915,7 @@ def packet_to_centered_debug(packet: AudioPacket, requested: str, adc_center: in
 
 # 함수 설명: 'ensure_scipy_signal' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
 def ensure_scipy_signal():
+    """ensure_scipy_signal는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
     global signal
     if signal is None:
         try:
@@ -871,6 +928,7 @@ def ensure_scipy_signal():
 
 # 함수 설명: 'design_bandpass' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
 def design_bandpass(sample_rate: int) -> np.ndarray:
+    """design_bandpass는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
     scipy_signal = ensure_scipy_signal()
     nyquist = sample_rate * 0.5
     return scipy_signal.butter(
@@ -883,6 +941,7 @@ def design_bandpass(sample_rate: int) -> np.ndarray:
 
 # 함수 설명: 'seq_gap' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
 def seq_gap(expected_seq: int, actual_seq: int) -> int:
+    """seq_gap는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
     return (actual_seq - expected_seq) % UINT32_MOD
 
 
@@ -895,6 +954,7 @@ def estimate_missing_samples(
     short_packet_samples: int,
     short_packet_mod: int | None,
 ) -> int:
+    """패킷 seq 차이를 기반으로 누락된 샘플 수나 상태를 추정합니다."""
     if missing_packets <= 0:
         return 0
 
@@ -913,6 +973,7 @@ def estimate_missing_samples(
 
 # 함수 설명: 파일, 시리얼, 모델, 설정 등 외부 입력을 읽어 메모리에 올립니다.
 def load_realtime_validate_module():
+    """외부 파일이나 선택 모듈을 읽어 현재 실행에서 사용할 객체로 준비합니다."""
     module_path = Path(__file__).resolve().parents[1] / "collection" / "realtime_validate.py"
     spec = importlib.util.spec_from_file_location("realtime_validate_for_monitor", module_path)
     if spec is None or spec.loader is None:
@@ -926,6 +987,7 @@ def load_realtime_validate_module():
 
 # 함수 설명: 시각화 화면이나 그래프 상태를 새 데이터에 맞게 갱신합니다.
 def update_packet_rate(stats: MonitorStats, now: float, interval_sec: float = 1.0) -> None:
+    """새로 들어온 데이터에 맞춰 상태, 통계, 그래프 표시를 갱신합니다."""
     elapsed = now - stats.last_status_time
     if elapsed < interval_sec:
         return
@@ -943,6 +1005,7 @@ def print_status(
     current_rms: float,
     current_p2p_adc: float,
 ) -> None:
+    """현재 처리 상태를 사용자가 확인하기 쉬운 콘솔 메시지로 출력합니다."""
     msg = (
         f"pps={stats.packets_per_sec:5.1f} "
         f"dropped={stats.dropped_packets} "
@@ -961,6 +1024,7 @@ def print_status(
 
 # 함수 설명: 선택된 작업 흐름을 순서대로 실행하고 하위 단계를 호출합니다.
 def run_monitor(args: argparse.Namespace) -> None:
+    """사용자가 선택한 모드의 실제 수집, 테스트, 모니터링 루프를 실행합니다."""
     if serial is None:
         raise DependencyError("pyserial is required. Install it with: pip install pyserial")
 
@@ -1082,6 +1146,7 @@ def run_monitor(args: argparse.Namespace) -> None:
 
 # 함수 설명: 명령행 옵션을 정의하고 사용자가 입력한 인자를 파싱합니다.
 def parse_args(argv: list[str]) -> argparse.Namespace:
+    """명령행에서 받을 옵션과 기본값을 정의하고 argparse 객체로 반환합니다."""
     parser = argparse.ArgumentParser(description="Realtime waveform monitor for STM32 USB CDC audio stream.")
     parser.add_argument("port", help="STM32 USB CDC COM port, e.g. COM5")
     parser.add_argument("--baudrate", type=int, default=DEFAULT_BAUDRATE)
@@ -1129,6 +1194,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 # 함수 설명: 스크립트 진입점으로 인자를 읽고 전체 실행 흐름을 호출합니다.
 def main(argv: list[str] | None = None) -> int:
+    """스크립트 진입점으로 CLI 인자를 읽고 전체 실행 흐름을 순서대로 호출합니다."""
     configure_utf8_stdio()
     args = parse_args(sys.argv[1:] if argv is None else argv)
 

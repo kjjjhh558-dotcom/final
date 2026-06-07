@@ -1,3 +1,17 @@
+/*
+  파일 설명:
+    XIAO nRF52840 Sense의 LSM6DS3 가속도값으로 간단한 자세 상태를 분류하고
+    BLE notify로 ESP32-S3 브리지에 1바이트 토큰을 전송합니다.
+
+  전체 흐름:
+    1. LSM6DS3에서 aX/aY를 읽습니다.
+    2. classifyPosture가 L/R/S/F/O 토큰으로 단순 분류합니다.
+    3. BLE service 0xAAAA / characteristic 0xBBBB에 현재 토큰을 write/notify합니다.
+    4. ESP32-S3 브리지가 notify를 받아 STM32 UART로 전달합니다.
+
+  상태 토큰:
+    L=left, R=right, S=sniffing, F=front-low, O=angle-over
+*/
 #include <LSM6DS3.h>
 #include <Wire.h>
 #include <bluefruit.h>
@@ -15,6 +29,7 @@ BLECharacteristic stateChar(0xBBBB);
 static char lastState = '?';
 static uint32_t notifyCount = 0;
 
+// X/Y 가속도 임계값만으로 베개/머리 자세를 1바이트 상태 토큰으로 단순 분류합니다.
 static char classifyPosture(float aX, float aY) {
   if (aY >= LEFT_RIGHT_THRESHOLD) {
     return 'R';
@@ -31,6 +46,7 @@ static char classifyPosture(float aX, float aY) {
   return 'O';
 }
 
+// IMU, BLE peripheral, advertising, notify characteristic을 초기화합니다.
 void setup() {
   Serial.begin(115200);
   pinMode(LED_BUILTIN, OUTPUT);
@@ -65,6 +81,7 @@ void setup() {
   Serial.println("States: L=left, R=right, S=sniffing, F=front-low, O=angle-over.");
 }
 
+// 주기적으로 IMU를 읽고 상태 토큰을 characteristic 값과 BLE notify로 전송합니다.
 void loop() {
   float aX = myIMU.readFloatAccelX();
   float aY = myIMU.readFloatAccelY();

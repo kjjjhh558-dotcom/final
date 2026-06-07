@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+"""STM32 USB CDC 오디오 패킷이 PC까지 정상 수신되는지 빠르게 점검합니다.
+
+데이터셋을 만들기 전 COM 포트, 패킷 MAGIC, seq 증가, 샘플 범위, ADC/PCM16 포맷을 확인하는 진단용 스크립트입니다."""
+
 # 파일 설명: STM32 USB CDC 오디오 패킷의 수신 상태와 ADC 범위를 빠르게 점검합니다.
 #
 # receive_audio_test.py
@@ -42,6 +46,7 @@ BAUDRATE = 115200  # USB CDC에서는 큰 의미 없음
 
 # 함수 설명: 파일, 시리얼, 모델, 설정 등 외부 입력을 읽어 메모리에 올립니다.
 def read_exact(ser, n):
+    """시리얼 포트에서 지정한 byte 수가 모일 때까지 읽고 timeout 시 오류를 냅니다."""
     data = bytearray()
     while len(data) < n:
         chunk = ser.read(n - len(data))
@@ -53,6 +58,7 @@ def read_exact(ser, n):
 
 # 함수 설명: 입력 스트림이나 목록에서 필요한 위치와 대상을 찾아 동기화합니다.
 def find_magic(ser):
+    """시리얼 stream에서 packet 시작을 나타내는 magic word까지 byte를 버리며 동기화합니다."""
     buf = bytearray()
 
     while True:
@@ -73,6 +79,7 @@ def find_magic(ser):
 
 # 함수 설명: 스크립트 진입점으로 인자를 읽고 전체 실행 흐름을 호출합니다.
 def main():
+    """스크립트 진입점으로 CLI 인자를 읽고 전체 실행 흐름을 순서대로 호출합니다."""
     if len(sys.argv) < 2:
         print("사용법: python receive_audio_test.py COM포트")
         print("예시: python receive_audio_test.py COM5")

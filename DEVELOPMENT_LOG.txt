@@ -13,3 +13,11 @@
 - 새 노트북에서 즉시 플래시할 수 있도록 최신 ELF만 firmware_release/mouthnose.elf에 보존했다.
 - build_firmware.ps1가 빌드 성공 후 ELF 스냅샷을 자동 갱신하도록 했다.
 - flash_firmware.ps1가 Release ELF가 없으면 firmware_release ELF를 사용하도록 했다.
+[2026-06-08 00:03:32 KST]
+- 프로젝트 인수인계를 위해 `scripts/**/*.py`와 `full56_pipeline/scripts/*.py`에 파일 역할 docstring과 함수/클래스별 역할 docstring을 보강했습니다.
+- `scripts/tools/*.ps1`에는 STM32 빌드, 플래시, workspace 검증 절차를 설명하는 파일 머리 주석과 단계별 주석을 추가했습니다.
+- `wireless_bridge/**/*.ino`에는 nRF52840 BLE notify, ESP32-S3 BLE-UART 중계, UART-only 배선 테스트 흐름과 setup/loop 역할을 설명했습니다.
+- `mouthnose/Core`와 `mouthnose/USB_DEVICE/App/usbd_cdc_if.c`에는 full56 DSP/AI, MAX30102, USB CDC 명령 처리, main 펌웨어 제어 함수 설명을 보강했습니다.
+- 벤더/자동생성 성격이 강한 `third_party`, STM32 HAL/CMSIS 영역은 원본 추적성을 위해 대규모 주석 수정을 하지 않는 범위로 문서화했습니다.
+- README.md, PROJECT_STRUCTURE.md, PIPELINE_COMMANDS.md 및 하위 README들의 최종 정리 시각과 코드 설명 기준을 갱신했습니다.
+- README.md 끝에 남아 있던 예전 NUL 인코딩 찌꺼기(`# final`)를 제거해 Markdown이 정상 텍스트로 보이게 정리했습니다.

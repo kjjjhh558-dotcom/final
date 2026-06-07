@@ -1,10 +1,9 @@
 /* USER CODE BEGIN Header */
 /*
- * 마이크 입력 backend 선택 설정입니다.
- *
- * 기본값은 기존 MAX9814 ADC 경로입니다.
- * ICS-43434 I2S 마이크를 테스트할 때만 MIC_BACKEND를
- * MIC_BACKEND_I2S_ICS43434로 바꿔서 빌드합니다.
+ * 파일 설명:
+ *   마이크 입력 backend를 선택하는 설정 파일입니다.
+ *   MIC_BACKEND_ADC_MAX9814는 ADC 마이크 경로, MIC_BACKEND_I2S_ICS43434는 ICS-43434 I2S 디지털 마이크 경로입니다.
+ *   현재 기본값은 ICS-43434 I2S 경로입니다.
  */
 /* USER CODE END Header */
 

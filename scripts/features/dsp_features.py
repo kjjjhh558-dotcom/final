@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
-"""Shared DSP feature helpers for offline training and realtime validation."""
+"""오프라인 학습과 실시간 검증이 공유하는 호흡음 DSP 특징 추출 유틸리티입니다.
+
+16 kHz WAV를 float32로 정규화하고, 50~2500 Hz 대역통과 필터, 프레임 분할, 스펙트럼 특징, MFCC, 선택적 노이즈 프로파일 보정을 한곳에서 수행합니다. STM32 펌웨어로 이식해야 하는 계산식의 기준 파일입니다."""
 
 from __future__ import annotations
 
@@ -68,6 +70,7 @@ NOISE_FEATURE_COLUMNS = [
 
 @dataclass(frozen=True)
 class NoiseProfile:
+    """노이즈 WAV들에서 계산한 평균 파워 스펙트럼과 생성 당시 DSP 설정을 함께 보관합니다."""
     path: Path
     freqs: np.ndarray
     mean_power: np.ndarray
@@ -85,6 +88,7 @@ class NoiseProfile:
 
 
 def pcm_to_float32(data: np.ndarray) -> np.ndarray:
+    """WAV PCM 또는 float 샘플을 -1.0~1.0 범위의 float32 파형으로 변환합니다."""
     if np.issubdtype(data.dtype, np.floating):
         return np.clip(data.astype(np.float32), -1.0, 1.0)
     if data.dtype == np.int16:
@@ -101,6 +105,7 @@ def pcm_to_float32(data: np.ndarray) -> np.ndarray:
 
 
 def read_wav_as_float32(path: Path, expected_sample_rate: int = SAMPLE_RATE) -> np.ndarray:
+    """WAV 파일을 읽고 샘플레이트와 채널 수를 검증한 뒤 단일 채널 float32 배열로 반환합니다."""
     sample_rate, data = wavfile.read(path)
     if sample_rate != expected_sample_rate:
         raise ValueError(f"sample rate mismatch: expected {expected_sample_rate}, got {sample_rate}")
@@ -119,6 +124,7 @@ def design_bandpass_filter(
     high_hz: float = BPF_HIGH_HZ,
     order: int = BPF_ORDER,
 ) -> np.ndarray:
+    """호흡음 특징 추출에 쓰는 Butterworth SOS 대역통과 필터 계수를 만듭니다."""
     nyquist = sample_rate * 0.5
     if not (0.0 < low_hz < high_hz < nyquist):
         raise ValueError("invalid band-pass cutoff frequencies")
@@ -126,6 +132,7 @@ def design_bandpass_filter(
 
 
 def apply_bandpass(audio: np.ndarray, sos: np.ndarray, causal: bool = False) -> np.ndarray:
+    """오프라인 zero-phase 또는 실시간 causal 방식으로 대역통과 필터를 적용합니다."""
     if causal:
         filtered = signal.sosfilt(sos, audio)
     else:
@@ -137,10 +144,12 @@ def apply_bandpass(audio: np.ndarray, sos: np.ndarray, causal: bool = False) -> 
 
 
 def hz_to_mel(hz: np.ndarray | float) -> np.ndarray | float:
+    """Hz 주파수를 MFCC 필터뱅크 계산에 쓰는 mel 축 값으로 바꿉니다."""
     return 2595.0 * np.log10(1.0 + np.asarray(hz) / 700.0)
 
 
 def mel_to_hz(mel: np.ndarray | float) -> np.ndarray | float:
+    """mel 축 값을 실제 Hz 주파수로 되돌립니다."""
     return 700.0 * (10.0 ** (np.asarray(mel) / 2595.0) - 1.0)
 
 
@@ -151,6 +160,7 @@ def build_mel_filterbank(
     fmin_hz: float = MFCC_FMIN_HZ,
     fmax_hz: float = MFCC_FMAX_HZ,
 ) -> np.ndarray:
+    """FFT power bin을 mel band 에너지로 합산하기 위한 삼각 필터뱅크를 생성합니다."""
     freqs = np.fft.rfftfreq(fft_size, d=1.0 / sample_rate)
     mel_min = hz_to_mel(fmin_hz)
     mel_max = hz_to_mel(fmax_hz)
@@ -169,6 +179,7 @@ def build_mel_filterbank(
 
 
 def frame_signal(audio: np.ndarray, frame_size: int = FRAME_SIZE, hop_size: int = HOP_SIZE) -> list[tuple[int, np.ndarray]]:
+    """전체 파형을 고정 길이 프레임과 hop 간격으로 자르고 짧은 입력은 0으로 패딩합니다."""
     if audio.size < frame_size:
         padded = np.zeros(frame_size, dtype=np.float32)
         padded[: audio.size] = audio
@@ -182,15 +193,18 @@ def frame_signal(audio: np.ndarray, frame_size: int = FRAME_SIZE, hop_size: int 
 
 
 def zero_crossing_rate(frame: np.ndarray) -> float:
+    """프레임 안에서 부호가 바뀌는 비율을 계산해 거친 시간 영역 특징으로 사용합니다."""
     signs = np.signbit(frame)
     return float(np.mean(signs[1:] != signs[:-1]))
 
 
 def spectrum_freqs(sample_rate: int = SAMPLE_RATE, fft_size: int = FFT_SIZE) -> np.ndarray:
+    """현재 FFT 크기와 샘플레이트 기준의 rFFT 주파수 bin 배열을 반환합니다."""
     return np.fft.rfftfreq(fft_size, d=1.0 / sample_rate)
 
 
 def compute_spectrum(frame: np.ndarray, window: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """윈도우를 곱한 프레임에서 rFFT와 power spectrum을 계산합니다."""
     windowed = frame * window
     spectrum = np.fft.rfft(windowed, n=FFT_SIZE)
     power = (np.abs(spectrum) ** 2).astype(np.float64)
@@ -198,11 +212,13 @@ def compute_spectrum(frame: np.ndarray, window: np.ndarray) -> tuple[np.ndarray,
 
 
 def band_energy(freqs: np.ndarray, power: np.ndarray, low_hz: float, high_hz: float) -> float:
+    """지정한 주파수 대역의 power를 합산해 band energy 특징을 만듭니다."""
     mask = (freqs >= low_hz) & (freqs < high_hz)
     return float(np.sum(power[mask]))
 
 
 def compute_mfcc(power: np.ndarray, mel_filterbank: np.ndarray) -> np.ndarray:
+    """mel 에너지에 log와 DCT를 적용해 NUM_MFCC개의 MFCC 계수를 계산합니다."""
     mel_energy = mel_filterbank @ power
     log_mel_energy = np.log(mel_energy + EPS)
     mfcc = fftpack.dct(log_mel_energy, type=2, norm="ortho")[:NUM_MFCC]
@@ -210,14 +226,17 @@ def compute_mfcc(power: np.ndarray, mel_filterbank: np.ndarray) -> np.ndarray:
 
 
 def power_db(power: np.ndarray | float) -> np.ndarray | float:
+    """power 값을 dB 스케일로 변환하되 0 나눗셈을 EPS로 방지합니다."""
     return 10.0 * np.log10(np.asarray(power) + EPS)
 
 
 def snr_db(signal_power: float, noise_power: float) -> float:
+    """신호 power와 노이즈 power의 비율을 dB 단위 SNR로 계산합니다."""
     return float(10.0 * np.log10((float(signal_power) + EPS) / (float(noise_power) + EPS)))
 
 
 def validate_noise_profile(profile: NoiseProfile) -> None:
+    """저장된 노이즈 프로파일이 현재 특징 추출 상수와 호환되는지 검증합니다."""
     expected_freqs = spectrum_freqs()
     if profile.sample_rate != SAMPLE_RATE:
         raise ValueError(f"noise profile sample_rate mismatch: {profile.sample_rate} != {SAMPLE_RATE}")
@@ -234,6 +253,7 @@ def validate_noise_profile(profile: NoiseProfile) -> None:
 
 
 def load_noise_profile(path: Path | None) -> NoiseProfile | None:
+    """npz 노이즈 프로파일을 읽어 NoiseProfile로 복원하고 설정 호환성을 확인합니다."""
     if path is None:
         return None
     if not path.exists():
@@ -261,6 +281,7 @@ def load_noise_profile(path: Path | None) -> NoiseProfile | None:
 
 
 def subtract_noise_power(power: np.ndarray, noise_profile: NoiseProfile | None) -> np.ndarray:
+    """노이즈 프로파일이 있으면 평균 노이즈 power를 빼고 음수는 0으로 클램프합니다."""
     if noise_profile is None:
         return power
     return np.maximum(power - noise_profile.mean_power, 0.0)
@@ -272,6 +293,7 @@ def extract_signal_features(
     mel_filterbank: np.ndarray,
     noise_profile: NoiseProfile | None = None,
 ) -> dict[str, float]:
+    """한 프레임에서 RMS, 스펙트럼, band ratio, MFCC, 선택적 SNR 특징을 모두 계산합니다."""
     rms = float(np.sqrt(np.mean(frame * frame) + EPS))
     log_rms = float(np.log(rms + EPS))
     zcr = zero_crossing_rate(frame)
@@ -326,6 +348,7 @@ def extract_signal_features(
 
 
 def collect_profile_powers(wav_paths: list[Path], causal_filter: bool = True) -> tuple[np.ndarray, np.ndarray, int]:
+    """노이즈 WAV 목록을 필터링/프레이밍해 평균 노이즈 프로파일 생성용 power matrix를 모읍니다."""
     if not wav_paths:
         raise FileNotFoundError("no WAV files were provided for noise profile generation")
 
@@ -354,6 +377,7 @@ def save_noise_profile(
     wav_paths: list[Path],
     causal_filter: bool = True,
 ) -> NoiseProfile:
+    """노이즈 WAV들로 평균 power와 noise floor를 계산해 압축 npz 프로파일로 저장합니다."""
     freqs, powers, file_count = collect_profile_powers(wav_paths, causal_filter=causal_filter)
     mean_power = np.mean(powers, axis=0)
     noise_floor_db = power_db(mean_power)

@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
-"""Report the active STM32 firmware/model configuration from source files."""
+"""소스 파일에 반영된 STM32 펌웨어와 AI 모델 설정을 요약 출력합니다.
+
+main.c, mic/FFT/AI 설정 헤더, model_selection.json을 읽어 현재 빌드가 어떤 모델/특징/LED/펌프 정책을 사용하는지 확인합니다."""
 
 from __future__ import annotations
 
@@ -13,16 +15,19 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def read_text(path: Path) -> str:
+    """소스/헤더 파일을 UTF-8 계열로 읽되 깨진 문자는 대체해 리포트를 계속 진행합니다."""
     return path.read_text(encoding="utf-8-sig", errors="replace")
 
 
 def read_json(path: Path) -> dict:
+    """JSON 파일이 있으면 읽고 없으면 빈 dict를 반환합니다."""
     if not path.exists():
         return {}
     return json.loads(read_text(path))
 
 
 def active_define(text: str, name: str) -> str | None:
+    """C/C++ 텍스트에서 주석 처리되지 않은 #define 값을 찾아 반환합니다."""
     pattern = re.compile(rf"^\s*#define\s+{re.escape(name)}\s+(.+?)\s*$", re.MULTILINE)
     for match in pattern.finditer(text):
         line_start = text.rfind("\n", 0, match.start()) + 1
@@ -34,12 +39,14 @@ def active_define(text: str, name: str) -> str | None:
 
 
 def c_initializer(text: str, name: str) -> str | None:
+    """C 소스의 전역/정적 변수 초기화 값을 간단한 정규식으로 추출합니다."""
     pattern = re.compile(rf"\b{name}\s*=\s*([^;]+);")
     match = pattern.search(text)
     return match.group(1).strip() if match else None
 
 
 def macro_float(text: str, name: str) -> float | None:
+    """#define 값을 float로 변환해 수치 리포트에 사용합니다."""
     value = active_define(text, name)
     if value is None:
         return None
@@ -50,6 +57,7 @@ def macro_float(text: str, name: str) -> float | None:
 
 
 def macro_int(text: str, name: str) -> int | None:
+    """#define 값을 정수로 변환해 핀/크기/시간 설정 리포트에 사용합니다."""
     value = active_define(text, name)
     if value is None:
         return None
@@ -60,6 +68,7 @@ def macro_int(text: str, name: str) -> int | None:
 
 
 def fmt_bool(value: str | None) -> str:
+    """C 초기화 값이나 macro 값을 ON/OFF/unknown으로 보기 좋게 바꿉니다."""
     if value is None:
         return "unknown"
     if value in {"1U", "1", "true"}:
@@ -70,6 +79,7 @@ def fmt_bool(value: str | None) -> str:
 
 
 def led_mode_name(value: str | None) -> str:
+    """펌웨어 LED mode enum 값을 사람이 읽는 설명으로 바꿉니다."""
     mapping = {
         "BREATH_LED_MODE_STABLE": "STABLE/post-processed",
         "BREATH_LED_MODE_RAW": "RAW argmax",
@@ -79,6 +89,7 @@ def led_mode_name(value: str | None) -> str:
 
 
 def main() -> int:
+    """현재 소스 기준의 모델, DSP, LED, 펌프, IMU 설정을 섹션별로 출력합니다."""
     parser = argparse.ArgumentParser(description="Read firmware source files and print active model/board settings.")
     parser.add_argument("--root", type=Path, default=PROJECT_ROOT)
     args = parser.parse_args()

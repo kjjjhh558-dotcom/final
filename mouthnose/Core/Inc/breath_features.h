@@ -1,4 +1,8 @@
-/* 파일 설명: STM32 펌웨어와 검증 코드가 공통으로 사용하는 causal 필터와 30개 특징 추출 API를 선언합니다. */
+/*
+ * 파일 설명:
+ *   STM32 호흡음 DSP feature extractor의 public API와 scratch buffer 구조를 선언합니다.
+ *   full56 빌드는 streaming SOS 필터, 4096 FFT, MFCC delta history를 사용하며 fallback 모델도 같은 API 형태를 공유합니다.
+ */
 
 /* Active full56 builds use streaming SOS filtering, a 4096-point FFT spectrum,
  * and MFCC delta history. Preserved 30-feature fallback assets use the same
@@ -82,6 +86,7 @@ breath_feature_status_t breath_features_extract_from_pcm_i16(
 
 /* Push streaming PCM samples through the causal DSP path and emit a delayed
  * 56-feature vector when enough MFCC context exists for delta/delta-delta. */
+/* 함수 설명: breath_features_process_pcm_i16_stream는 STM32 DSP feature extractor의 public 처리 단계입니다. */
 breath_feature_status_t breath_features_process_pcm_i16_stream(
     breath_feature_scratch_t *scratch,
     const int16_t *pcm,

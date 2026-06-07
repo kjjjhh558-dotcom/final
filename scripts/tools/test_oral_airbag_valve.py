@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
-"""Exercise the oral airbag pump and exhaust solenoid valve over STM32 USB CDC."""
+"""구강 에어백 펌프와 배기 솔레노이드 밸브를 안전 확인 후 단계적으로 시험합니다.
+
+click은 밸브 단독 클릭 테스트, inflate-vent는 펌프로 팽창 후 OUT으로 배기, vent는 즉시 배기 동작을 확인합니다."""
 
 from __future__ import annotations
 
@@ -14,6 +16,7 @@ except ImportError:
 
 
 def positive_float(value: str) -> float:
+    """시간 인자가 음수가 아닌 float인지 검증합니다."""
     parsed = float(value)
     if parsed < 0:
         raise argparse.ArgumentTypeError("value must be >= 0")
@@ -21,6 +24,7 @@ def positive_float(value: str) -> float:
 
 
 def positive_int(value: str) -> int:
+    """반복 횟수나 ms 인자가 음수가 아닌 int인지 검증합니다."""
     parsed = int(value)
     if parsed < 0:
         raise argparse.ArgumentTypeError("value must be >= 0")
@@ -28,6 +32,7 @@ def positive_int(value: str) -> int:
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
+    """구강 에어백 테스트 모드와 안전 관련 실행 옵션을 정의합니다."""
     parser = argparse.ArgumentParser(
         description=(
             "Test the oral breathing airbag solenoid valve. "
@@ -54,6 +59,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 
 def send_command(ser: "serial.Serial", command: str) -> None:
+    """STM32 USB CDC로 한 줄 명령을 보내고 콘솔에 같은 내용을 표시합니다."""
     line = command.strip()
     print(f"> {line}")
     ser.write((line + "\n").encode("ascii"))
@@ -62,6 +68,7 @@ def send_command(ser: "serial.Serial", command: str) -> None:
 
 
 def wait_seconds(seconds: float, label: str) -> None:
+    """테스트 단계 사이 관찰 시간을 사람이 알 수 있게 출력하며 대기합니다."""
     if seconds <= 0:
         return
     print(f"... {label}: {seconds:.1f}s")
@@ -69,6 +76,7 @@ def wait_seconds(seconds: float, label: str) -> None:
 
 
 def confirm(args: argparse.Namespace) -> None:
+    """펌프/밸브 전원과 배기 안전 경로를 확인하도록 실행 전 안전 프롬프트를 표시합니다."""
     if args.yes:
         return
 
@@ -82,6 +90,7 @@ def confirm(args: argparse.Namespace) -> None:
 
 
 def run_click(ser: "serial.Serial", args: argparse.Namespace) -> None:
+    """밸브 ON/OFF를 반복해 솔레노이드 클릭과 배선 상태를 확인합니다."""
     cycles = max(1, args.cycles)
     for idx in range(cycles):
         print(f"[cycle {idx + 1}/{cycles}] valve ON")
@@ -93,6 +102,7 @@ def run_click(ser: "serial.Serial", args: argparse.Namespace) -> None:
 
 
 def run_inflate_vent(ser: "serial.Serial", args: argparse.Namespace) -> None:
+    """배기 밸브를 닫고 펌프로 팽창시킨 뒤 OUT 명령으로 배기 동작을 확인합니다."""
     duty = max(0, min(100, args.duty))
     print("[step 1] Close exhaust valve")
     send_command(ser, "VALVE OFF")
@@ -108,12 +118,14 @@ def run_inflate_vent(ser: "serial.Serial", args: argparse.Namespace) -> None:
 
 
 def run_vent(ser: "serial.Serial", args: argparse.Namespace) -> None:
+    """펌프를 멈추고 배기 밸브를 열어 에어백이 빠지는지 확인합니다."""
     print("[vent] Stop pump and open exhaust valve")
     send_command(ser, "OUT")
     wait_seconds(args.vent_sec, "airbag deflate observation")
 
 
 def main(argv: list[str] | None = None) -> int:
+    """안전 확인 후 선택한 구강 에어백 테스트 시나리오를 실행합니다."""
     args = parse_args(sys.argv[1:] if argv is None else argv)
 
     if serial is None:

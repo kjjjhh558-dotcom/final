@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
-"""Check nRF52840 -> ESP32-S3 BLE -> STM32 UART end-to-end posture path."""
+"""nRF52840 IMU BLE 알림이 ESP32-S3를 거쳐 STM32 UART까지 도달하는지 끝단 간 검증합니다.
+
+ESP32-S3 USB 로그와 STM32 IMU 텔레메트리를 동시에 읽어 BLE notify, UART TX, STM32 RX/valid 카운터가 순서대로 증가하는지 판정합니다."""
 
 from __future__ import annotations
 
@@ -36,6 +38,7 @@ TEAM_DATA_RE = re.compile(r"Data Received:\s*(?P<state>[LRNSFOA])")
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
+    """STM32와 ESP32-S3 COM 포트, baudrate, 관찰 시간을 CLI로 받습니다."""
     parser = argparse.ArgumentParser(
         description=(
             "Read ESP32-S3 USB logs and STM32 IMU telemetry together to verify "
@@ -53,10 +56,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 
 def state_name(value: int) -> str:
+    """STM32 자세 상태 숫자를 사람이 읽는 이름으로 변환합니다."""
     return STATE_NAMES.get(value, f"STATE_{value}")
 
 
 def byte_repr(value: int) -> str:
+    """STM32 마지막 UART 바이트를 디버깅하기 좋은 문자열로 바꿉니다."""
     if value == 0:
         return "none"
     if 32 <= value <= 126:
@@ -65,6 +70,7 @@ def byte_repr(value: int) -> str:
 
 
 def unpack_stm_packet(packet: bytes) -> dict[str, int]:
+    """STM32 IMU 텔레메트리 binary packet을 dict 필드로 해석합니다."""
     fields = struct.unpack(IMU_PACKET_FMT, packet)
     keys = (
         "magic",
@@ -88,6 +94,7 @@ def unpack_stm_packet(packet: bytes) -> dict[str, int]:
 
 
 def process_stm_buffer(buffer: bytearray) -> list[dict[str, int]]:
+    """시리얼 버퍼에서 magic을 찾아 완성된 STM32 텔레메트리 패킷만 추출합니다."""
     packets: list[dict[str, int]] = []
     while True:
         idx = buffer.find(IMU_MAGIC_BYTES)
@@ -109,6 +116,7 @@ def process_stm_buffer(buffer: bytearray) -> list[dict[str, int]]:
 
 
 def read_esp_lines(esp: "serial.Serial", line_buffer: bytearray) -> list[str]:
+    """ESP32-S3 USB 로그 버퍼에서 줄 단위 텍스트를 안전하게 잘라냅니다."""
     lines: list[str] = []
     data = esp.read(4096)
     if data:
@@ -127,6 +135,7 @@ def read_esp_lines(esp: "serial.Serial", line_buffer: bytearray) -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """ESP notify/UART TX와 STM32 RX/valid 증가를 함께 관찰해 end-to-end 판정을 출력합니다."""
     args = parse_args(sys.argv[1:] if argv is None else argv)
 
     if serial is None:

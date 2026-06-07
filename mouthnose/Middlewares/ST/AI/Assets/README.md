@@ -1,6 +1,6 @@
 # STM32F407VET full56 AI 자산
 
-최종 정리 시각: 2026-06-01 13:42 KST
+최종 정리 시각: 2026-06-08 00:03 KST
 
 `full56_pipeline/scripts/install_full56_firmware_candidate.py`가 생성합니다.
 
@@ -22,3 +22,7 @@
 - class LED: PE0, PE1, PE2, PE3, PE7
 - PA6 oral pump PWM: TIM3_CH1, 20 kHz, 기본 duty 10%
 - noise profile subtraction은 현재 full56 실시간 특징 경로에 적용하지 않습니다.
+
+## 주석 변경 메모
+
+AI 자산 자체의 수치나 모델 파일은 이번 작업에서 재생성하지 않았습니다. 관련 Python 설치 스크립트와 STM32 wrapper 코드에 full56 자산의 생성/설치 역할 설명을 추가했습니다.

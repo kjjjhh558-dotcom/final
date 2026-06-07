@@ -1,10 +1,7 @@
 # -*- coding: utf-8 -*-
-"""Small ST Edge AI CLI resolver for the active full56 workflow.
+"""ST Edge AI CLI 실행 파일을 찾기 위한 공통 유틸리티입니다.
 
-The old 30-feature ``stm32_tinyml`` workspace used to provide this helper.
-Keeping it here makes the active 200 ms + MFCC-delta pipeline self-contained,
-so the legacy 30-feature workspace can be moved out of the project root.
-"""
+명시 경로, 환경 변수, PATH, STM32Cube Repository의 X-CUBE-AI pack을 순서대로 탐색해 full56 export/install 스크립트가 같은 방식으로 도구를 찾게 합니다."""
 
 from __future__ import annotations
 
@@ -14,12 +11,13 @@ import shutil
 
 
 def _version_key(path: Path) -> tuple[int, ...]:
+    """X-CUBE-AI pack 폴더명을 숫자 tuple로 바꿔 최신 버전을 먼저 정렬할 수 있게 합니다."""
     parts = path.name.replace("-", ".").split(".")
     return tuple(int(part) if part.isdigit() else -1 for part in parts)
 
 
 def stedgeai_tool_candidates(tool: str | None = None) -> list[Path]:
-    """Return likely ST Edge AI CLI paths, newest X-CUBE-AI pack first."""
+    """명시 경로, 환경 변수, PATH, Cube Repository에서 ST Edge AI CLI 후보 경로를 중복 없이 모읍니다."""
     candidates: list[Path] = []
 
     for value in (tool, os.environ.get("STEDGEAI_EXE")):
@@ -56,7 +54,7 @@ def stedgeai_tool_candidates(tool: str | None = None) -> list[Path]:
 
 
 def resolve_stedgeai_tool(tool: str | None = None) -> str:
-    """Resolve the ST Edge AI CLI executable from an explicit path, PATH, or Cube repository."""
+    """실제로 존재하는 ST Edge AI CLI 경로를 선택하고 없으면 검색한 경로 목록과 함께 오류를 냅니다."""
     for candidate in stedgeai_tool_candidates(tool):
         if candidate.exists() and candidate.is_file():
             return str(candidate)

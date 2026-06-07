@@ -1,3 +1,8 @@
+/*
+ * 파일 설명:
+ *   MAX30102 산소포화도/심박 상태 구조와 초기화/서비스/상태 조회 API를 선언합니다.
+ */
+
 #ifndef MAX30102_SPO2_H
 #define MAX30102_SPO2_H
 
@@ -26,8 +31,11 @@ typedef struct {
     uint32_t i2c_error_count;
 } Max30102Spo2State;
 
+/* 함수 설명: I2C 핸들과 상태 LED 핀을 저장하고 MAX30102 레지스터를 SpO2 모드로 설정합니다. */
 uint8_t Max30102Spo2_Init(I2C_HandleTypeDef *hi2c, GPIO_TypeDef *led_port, uint16_t led_pin);
+/* 함수 설명: 주기적으로 FIFO를 읽고 심박/SpO2 상태와 상태 LED를 갱신합니다. */
 void Max30102Spo2_Service(void);
+/* 함수 설명: 현재 MAX30102 runtime state snapshot을 호출자 버퍼로 복사합니다. */
 void Max30102Spo2_GetState(Max30102Spo2State *out_state);
 
 #endif /* MAX30102_SPO2_H */

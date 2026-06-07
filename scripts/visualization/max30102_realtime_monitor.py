@@ -1,10 +1,7 @@
 # -*- coding: utf-8 -*-
-"""Realtime MAX30102 telemetry plotter for the STM32 USB CDC stream.
+"""STM32 USB CDC 스트림에서 MAX30102 RED/IR/SpO2 텔레메트리만 골라 실시간으로 확인합니다.
 
-The firmware keeps sending audio and AI packets on the same COM port.  This
-monitor enables MAX30102 telemetry with ``MAX ON`` and then skips unrelated
-audio/AI packets while plotting only MAX30102 RED/IR/SpO2 values.
-"""
+같은 COM 포트에 섞여 들어오는 오디오/AI 패킷은 건너뛰고 MAX30102 패킷만 파싱해 콘솔, CSV, 플롯으로 센서 상태를 점검합니다."""
 
 from __future__ import annotations
 
@@ -42,6 +39,7 @@ DEFAULT_READ_CHUNK = 4096
 
 @dataclass(frozen=True)
 class Max30102Packet:
+    """Max30102Packet는 펌웨어나 센서에서 받은 한 개 패킷의 필드를 묶어 전달하는 데이터 구조입니다."""
     seq: int
     tick_ms: int
     sample_count: int
@@ -55,33 +53,41 @@ class Max30102Packet:
 
     @property
     def initialized(self) -> bool:
+        """Max30102Packet.initialized는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
         return bool(self.flags & (1 << 0))
 
     @property
     def present(self) -> bool:
+        """Max30102Packet.present는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
         return bool(self.flags & (1 << 1))
 
     @property
     def finger_detected(self) -> bool:
+        """Max30102Packet.finger_detected는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
         return bool(self.flags & (1 << 2))
 
     @property
     def spo2_ok(self) -> bool:
+        """Max30102Packet.spo2_ok는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
         return bool(self.flags & (1 << 3))
 
     @property
     def status(self) -> int:
+        """Max30102Packet.status는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
         return (self.flags >> 8) & 0xFF
 
 
 class PacketParser:
+    """PacketParser는 시리얼 byte stream에서 필요한 packet을 동기화하고 파싱합니다."""
     def __init__(self) -> None:
+        """PacketParser 인스턴스가 사용할 버퍼, 파일 핸들, 장치 상태를 초기화합니다."""
         self.buffer = bytearray()
         self.skipped_audio_packets = 0
         self.skipped_ai_packets = 0
         self.resync_bytes = 0
 
     def feed(self, data: bytes) -> list[Max30102Packet]:
+        """누적 byte buffer에서 완성된 packet을 찾아 파싱하고 남은 조각은 다음 읽기에 보존합니다."""
         self.buffer.extend(data)
         packets: list[Max30102Packet] = []
 
@@ -95,6 +101,7 @@ class PacketParser:
         return packets
 
     def _find_next_magic(self) -> tuple[int, str] | None:
+        """PacketParser._find_next_magic는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
         best_index: int | None = None
         best_kind: str | None = None
         for magic, kind in MAGIC_BYTES.items():
@@ -117,6 +124,7 @@ class PacketParser:
         return 0, best_kind
 
     def _parse_one(self) -> Max30102Packet | bool | None:
+        """텍스트나 binary 입력을 내부에서 쓰는 구조화된 값으로 해석합니다."""
         found = self._find_next_magic()
         if found is None:
             return None
@@ -183,7 +191,9 @@ class PacketParser:
 
 
 class CsvLogger:
+    """CsvLogger는 수집 또는 모니터링 결과를 파일로 안전하게 기록합니다."""
     def __init__(self, path: Path | None) -> None:
+        """CsvLogger 인스턴스가 사용할 버퍼, 파일 핸들, 장치 상태를 초기화합니다."""
         self.file = None
         self.writer: csv.writer | None = None
         if path is not None:
@@ -211,6 +221,7 @@ class CsvLogger:
             )
 
     def write(self, pkt: Max30102Packet) -> None:
+        """CsvLogger.write는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
         if self.writer is None:
             return
         self.writer.writerow(
@@ -234,17 +245,20 @@ class CsvLogger:
         )
 
     def close(self) -> None:
+        """열어 둔 파일, 오디오 장치, 스레드 등 외부 자원을 정리합니다."""
         if self.file is not None:
             self.file.close()
 
 
 def send_command(ser: "serial.Serial", command: str, delay: float = 0.04) -> None:
+    """STM32나 보조 보드로 한 줄 제어 명령을 보내고 전송 버퍼를 비웁니다."""
     ser.write((command.rstrip() + "\n").encode("ascii"))
     ser.flush()
     time.sleep(delay)
 
 
 def status_text(pkt: Max30102Packet, elapsed: float) -> str:
+    """내부 상태값을 콘솔이나 그래프에 표시하기 좋은 문자열 또는 라벨로 변환합니다."""
     return (
         f"[MAX] t={elapsed:6.1f}s seq={pkt.seq:06d} "
         f"present={int(pkt.present)} finger={int(pkt.finger_detected)} "
@@ -255,6 +269,7 @@ def status_text(pkt: Max30102Packet, elapsed: float) -> str:
 
 
 def run(args: argparse.Namespace) -> int:
+    """사용자가 선택한 모드의 실제 수집, 테스트, 모니터링 루프를 실행합니다."""
     if serial is None:
         print("pyserial is required: python -m pip install pyserial", file=sys.stderr)
         return 2
@@ -401,6 +416,7 @@ def run(args: argparse.Namespace) -> int:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
+    """명령행에서 받을 옵션과 기본값을 정의하고 argparse 객체로 반환합니다."""
     parser = argparse.ArgumentParser(description="Realtime graph for STM32 MAX30102 RED/IR/SpO2 telemetry.")
     parser.add_argument("port", help="STM32 USB CDC COM port, e.g. COM4")
     parser.add_argument("--baudrate", type=int, default=DEFAULT_BAUDRATE)
@@ -419,6 +435,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    """스크립트 진입점으로 CLI 인자를 읽고 전체 실행 흐름을 순서대로 호출합니다."""
     return run(build_arg_parser().parse_args())
 
 

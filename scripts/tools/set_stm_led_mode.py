@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
-"""Set STM32 class LED display mode over USB CDC."""
+"""STM32 클래스 LED 표시 정책을 USB CDC 명령으로 변경합니다.
+
+LED RAW/STABLE/OFF 명령을 보내 원시 argmax 표시, 안정화된 투표 결과 표시, LED 비활성화를 선택합니다."""
 
 from __future__ import annotations
 
@@ -14,6 +16,7 @@ except ImportError:
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
+    """LED stable/raw/off 모드와 COM 포트 옵션을 CLI에서 받습니다."""
     parser = argparse.ArgumentParser(description="Send LED RAW/STABLE/OFF command to STM32 USB CDC firmware.")
     parser.add_argument("port", help="serial port, e.g. COM4")
     parser.add_argument("mode", choices=("stable", "raw", "off"), help="class LED display mode")
@@ -23,6 +26,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """선택한 LED 모드를 STM32 LED RAW/STABLE/OFF 명령으로 전송합니다."""
     args = parse_args(sys.argv[1:] if argv is None else argv)
 
     if serial is None:

@@ -1,6 +1,6 @@
 # 최종 폴더 구조
 
-최종 정리 시각: 2026-06-01 13:42 KST
+최종 정리 시각: 2026-06-08 00:03 KST
 
 ## 데이터 흐름
 
@@ -73,3 +73,18 @@ PC 특징 추출에서는 NumPy와 SciPy를 사용합니다. STM32 실시간 실
 ## 제외 원칙
 
 최종 폴더에는 현재 동작 재현에 필요한 파일만 둡니다. 모델 구조 탐색을 다시 시작해야 할 때는 별도 실험 폴더를 새로 만들고, 결과가 확정된 파일만 이 작업공간으로 반영하십시오.
+
+## 코드 주석화 범위
+
+```text
+scripts/**/*.py                 파일 역할, 실행 목적, 함수/클래스 역할 docstring 보강
+full56_pipeline/scripts/*.py     full56 학습/export/install 단계별 docstring 보강
+scripts/tools/*.ps1              빌드/플래시/검증 단계별 PowerShell 주석 보강
+wireless_bridge/**/*.ino         BLE, UART, IMU 상태 토큰 흐름 설명 보강
+mouthnose/Core/Src/*.c           main, AI, DSP, MAX30102, CDC 명령 처리 주석 보강
+mouthnose/Core/Inc/*.h           외부 API와 설정 헤더 역할 설명 보강
+third_party/**                   외부 벤더 코드라 원본 보존 우선
+mouthnose/Drivers, Middlewares   CubeMX/HAL/라이브러리 생성 코드라 필요한 앱 접점만 설명
+```
+
+새 개발자는 코드 파일을 열었을 때 맨 위 파일 설명으로 실행 목적을 먼저 보고, 함수 바로 아래 docstring 또는 함수 앞 `함수 설명` 주석으로 세부 흐름을 따라가면 됩니다.

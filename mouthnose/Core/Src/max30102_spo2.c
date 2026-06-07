@@ -1,3 +1,9 @@
+/*
+ * 파일 설명:
+ *   MAX30102 RED/IR 센서를 I2C로 제어하고 간단한 심박/SpO2 상태를 계산합니다.
+ *   main.c는 이 모듈의 상태를 USB CDC MAX30102 텔레메트리 패킷으로 PC에 전송합니다.
+ */
+
 #include "max30102_spo2.h"
 
 #include <string.h>
@@ -63,6 +69,7 @@ typedef struct {
 
 static Max30102Context g_max30102;
 
+/* 함수 설명: Max30102_ReadReg는 MAX30102 센서 초기화, sample 처리, 텔레메트리 상태 갱신을 담당합니다. */
 static HAL_StatusTypeDef Max30102_ReadReg(uint8_t reg, uint8_t *value)
 {
     return HAL_I2C_Mem_Read(g_max30102.hi2c, MAX30102_I2C_ADDR, reg,
@@ -70,6 +77,7 @@ static HAL_StatusTypeDef Max30102_ReadReg(uint8_t reg, uint8_t *value)
                             MAX30102_I2C_TIMEOUT_MS);
 }
 
+/* 함수 설명: Max30102_WriteReg는 MAX30102 센서 초기화, sample 처리, 텔레메트리 상태 갱신을 담당합니다. */
 static HAL_StatusTypeDef Max30102_WriteReg(uint8_t reg, uint8_t value)
 {
     return HAL_I2C_Mem_Write(g_max30102.hi2c, MAX30102_I2C_ADDR, reg,
@@ -77,6 +85,7 @@ static HAL_StatusTypeDef Max30102_WriteReg(uint8_t reg, uint8_t value)
                              MAX30102_I2C_TIMEOUT_MS);
 }
 
+/* 함수 설명: Max30102_ReadBytes는 MAX30102 센서 초기화, sample 처리, 텔레메트리 상태 갱신을 담당합니다. */
 static HAL_StatusTypeDef Max30102_ReadBytes(uint8_t reg, uint8_t *data, uint16_t len)
 {
     return HAL_I2C_Mem_Read(g_max30102.hi2c, MAX30102_I2C_ADDR, reg,
@@ -84,6 +93,7 @@ static HAL_StatusTypeDef Max30102_ReadBytes(uint8_t reg, uint8_t *data, uint16_t
                             MAX30102_I2C_TIMEOUT_MS);
 }
 
+/* 함수 설명: Max30102_ResetRuntime는 MAX30102 센서 초기화, sample 처리, 텔레메트리 상태 갱신을 담당합니다. */
 static void Max30102_ResetRuntime(void)
 {
     memset(g_max30102.ir_win, 0, sizeof(g_max30102.ir_win));
@@ -106,6 +116,7 @@ static void Max30102_ResetRuntime(void)
     g_max30102.state.status = MAX30102_SPO2_STATUS_OFF;
 }
 
+/* 함수 설명: Max30102_SetLed는 MAX30102 센서 초기화, sample 처리, 텔레메트리 상태 갱신을 담당합니다. */
 static void Max30102_SetLed(GPIO_PinState state)
 {
     if (g_max30102.led_port != NULL) {
@@ -113,6 +124,7 @@ static void Max30102_SetLed(GPIO_PinState state)
     }
 }
 
+/* 함수 설명: Max30102_UpdateStatusLed는 MAX30102 센서 초기화, sample 처리, 텔레메트리 상태 갱신을 담당합니다. */
 static void Max30102_UpdateStatusLed(void)
 {
     const uint32_t now = HAL_GetTick();
@@ -141,6 +153,7 @@ static void Max30102_UpdateStatusLed(void)
     }
 }
 
+/* 함수 설명: Max30102_ProcessHeartRate는 MAX30102 센서 초기화, sample 처리, 텔레메트리 상태 갱신을 담당합니다. */
 static void Max30102_ProcessHeartRate(int32_t ir)
 {
     const uint32_t now = HAL_GetTick();
@@ -175,6 +188,7 @@ static void Max30102_ProcessHeartRate(int32_t ir)
     }
 }
 
+/* 함수 설명: Max30102_ProcessSpo2Window는 MAX30102 센서 초기화, sample 처리, 텔레메트리 상태 갱신을 담당합니다. */
 static void Max30102_ProcessSpo2Window(void)
 {
     int32_t ir_min;
@@ -226,6 +240,7 @@ static void Max30102_ProcessSpo2Window(void)
     g_max30102.state.spo2_ok = 1U;
 }
 
+/* 함수 설명: Max30102_ProcessSample는 MAX30102 센서 초기화, sample 처리, 텔레메트리 상태 갱신을 담당합니다. */
 static void Max30102_ProcessSample(int32_t red, int32_t ir)
 {
     g_max30102.state.red = red;
@@ -252,6 +267,7 @@ static void Max30102_ProcessSample(int32_t red, int32_t ir)
     Max30102_ProcessSpo2Window();
 }
 
+/* 함수 설명: Max30102_PollFifo는 MAX30102 센서 초기화, sample 처리, 텔레메트리 상태 갱신을 담당합니다. */
 static void Max30102_PollFifo(void)
 {
     uint8_t wr_ptr;
@@ -289,6 +305,7 @@ static void Max30102_PollFifo(void)
     }
 }
 
+/* 함수 설명: I2C 핸들과 상태 LED 핀을 저장하고 MAX30102 레지스터를 SpO2 모드로 설정합니다. */
 uint8_t Max30102Spo2_Init(I2C_HandleTypeDef *hi2c, GPIO_TypeDef *led_port, uint16_t led_pin)
 {
     uint8_t part_id = 0U;
@@ -339,6 +356,7 @@ uint8_t Max30102Spo2_Init(I2C_HandleTypeDef *hi2c, GPIO_TypeDef *led_port, uint1
     return 1U;
 }
 
+/* 함수 설명: 주기적으로 FIFO를 읽고 심박/SpO2 상태와 상태 LED를 갱신합니다. */
 void Max30102Spo2_Service(void)
 {
     const uint32_t now = HAL_GetTick();
@@ -356,6 +374,7 @@ void Max30102Spo2_Service(void)
     Max30102_UpdateStatusLed();
 }
 
+/* 함수 설명: 현재 MAX30102 runtime state snapshot을 호출자 버퍼로 복사합니다. */
 void Max30102Spo2_GetState(Max30102Spo2State *out_state)
 {
     if (out_state != NULL) {

@@ -1,4 +1,8 @@
-/* 파일 설명: STM32Cube.AI 모델 초기화, PCM 예측, 확률 후처리, 부팅 self-test, 실시간 AI ON/OFF API를 선언합니다. */
+/*
+ * 파일 설명:
+ *   STM32Cube.AI breath_mlp 실행 wrapper API를 선언합니다.
+ *   모델 초기화, feature/PCM 예측, stream 예측, golden self-test, 실시간 추론 on/off 제어가 포함됩니다.
+ */
 
 #ifndef BREATH_AI_APP_H
 #define BREATH_AI_APP_H
@@ -51,12 +55,14 @@ breath_ai_status_t BreathAI_PredictPcmI16(
 
 /* Push live PCM samples into the streaming DSP path. probability output is
  * valid only when prediction_ready is set to 1. */
+/* 함수 설명: 실시간 PCM sample stream을 DSP history에 밀어 넣고 준비된 시점에 예측 확률을 반환합니다. */
 breath_ai_status_t BreathAI_ProcessPcmI16Stream(
     const int16_t *pcm,
     uint32_t sample_count,
     float probabilities[BREATH_AI_LABEL_COUNT],
     uint8_t *prediction_ready);
 
+/* 함수 설명: 실시간 feature history와 filter state를 초기화해 다음 예측을 새 stream처럼 시작합니다. */
 void BreathAI_ResetFeatureStream(void);
 
 /* 함수 설명: 모델 확률 배열에서 가장 큰 값을 가진 클래스 인덱스를 선택합니다. */

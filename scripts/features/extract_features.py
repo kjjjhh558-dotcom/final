@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+"""수집된 WAV 데이터셋에서 학습용 DSP/MFCC feature CSV를 생성하고 검증합니다.
+
+기본 데이터셋 구조는 dataset_ics43434/<label>/<label>_NNN.wav 형태이며, 파일 번호 규칙으로 train/test를 나눕니다. no_breath 같은 과거 라벨은 noise로 보정하고, dsp_features.py의 공통 계산식을 사용해 PC 학습과 STM32 이식 기준을 맞춥니다."""
+
 # 파일 설명: 저장된 WAV 파일에서 호흡 분류용 DSP/MFCC feature CSV를 생성하고 검증합니다.
 #
 # extract_features.py
@@ -114,6 +118,7 @@ NOISE_FEATURE_COLUMNS = list(dsp.NOISE_FEATURE_COLUMNS)
 
 
 def output_feature_columns(noise_profile: dsp.NoiseProfile | None = None) -> list[str]:
+    """노이즈 프로파일 사용 여부에 따라 CSV에 포함할 feature column 목록을 결정합니다."""
     if noise_profile is None:
         return FEATURE_COLUMNS
     return FEATURE_COLUMNS + NOISE_FEATURE_COLUMNS
@@ -122,6 +127,7 @@ def output_feature_columns(noise_profile: dsp.NoiseProfile | None = None) -> lis
 # 클래스 설명: 'WavRecord' 동작에 필요한 상태와 메서드를 묶는 클래스입니다.
 @dataclass(frozen=True)
 class WavRecord:
+    """한 WAV 파일의 원본 경로, 라벨, split, 세션명, 출력 상대경로를 묶습니다."""
     wav_path: Path
     label: str
     split: str
@@ -131,6 +137,7 @@ class WavRecord:
 
 # 함수 설명: 실행 환경이나 출력 형식을 현재 작업에 맞게 설정합니다.
 def configure_utf8_stdio() -> None:
+    """Windows 콘솔에서도 한국어 로그가 깨지지 않도록 stdout/stderr 인코딩을 UTF-8로 맞춥니다."""
     for stream in (sys.stdout, sys.stderr):
         try:
             stream.reconfigure(encoding="utf-8")
@@ -140,6 +147,7 @@ def configure_utf8_stdio() -> None:
 
 # 함수 설명: 'infer_split' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
 def infer_split(wav_path: Path) -> str:
+    """폴더 구조나 파일 번호 규칙을 보고 WAV가 train/test/legacy 중 어디에 속하는지 추론합니다."""
     parent = wav_path.parent.parent.name
     if parent in SPLITS:
         return parent
@@ -153,6 +161,7 @@ def infer_split(wav_path: Path) -> str:
 
 # 함수 설명: 'wav_ordinal' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
 def wav_ordinal(wav_path: Path) -> int:
+    """label_NNN.wav 파일명에서 NNN 번호를 뽑아 split 규칙에 사용할 정수로 반환합니다."""
     label = LEGACY_LABEL_MAP.get(wav_path.parent.name, wav_path.parent.name)
     if label not in LABELS:
         return -1
@@ -167,6 +176,7 @@ def wav_ordinal(wav_path: Path) -> int:
 
 # 함수 설명: 'infer_session_name' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
 def infer_session_name(wav_path: Path, dataset_dir: Path) -> str:
+    """dataset/session/label 또는 dataset/label 구조를 모두 받아 세션 이름을 안정적으로 추론합니다."""
     try:
         parts = wav_path.relative_to(dataset_dir).parts
     except ValueError:
@@ -188,6 +198,7 @@ def infer_session_name(wav_path: Path, dataset_dir: Path) -> str:
 
 # 함수 설명: 'feature_relative_path' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
 def feature_relative_path(wav_path: Path, dataset_dir: Path, session: str) -> Path:
+    """features CSV에 기록할 세션 기준 상대 경로를 만들어 파일 출처를 잃지 않게 합니다."""
     relative_path = wav_path.relative_to(dataset_dir)
     if relative_path.parts and relative_path.parts[0] == session:
         return relative_path
@@ -196,6 +207,7 @@ def feature_relative_path(wav_path: Path, dataset_dir: Path, session: str) -> Pa
 
 # 함수 설명: 'discover_wav_files' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
 def discover_wav_files(dataset_dir: Path, split: str = "all") -> list[WavRecord]:
+    """하나의 데이터셋 루트 아래에서 학습 대상 WAV 파일을 찾아 WavRecord 목록으로 정리합니다."""
     wav_files: list[WavRecord] = []
 
     for wav_path in sorted(dataset_dir.rglob("*.wav")):
@@ -224,6 +236,7 @@ def discover_wav_files(dataset_dir: Path, split: str = "all") -> list[WavRecord]
 
 # 함수 설명: 'discover_wav_files_from_sources' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
 def discover_wav_files_from_sources(dataset_dirs: list[Path], split: str = "all") -> tuple[list[WavRecord], list[Path]]:
+    """여러 데이터셋 루트를 순서대로 해석해 중복 없이 WAV 레코드와 실제 사용 경로를 반환합니다."""
     records: list[WavRecord] = []
     resolved_dirs: list[Path] = []
     seen_paths: set[Path] = set()
@@ -245,6 +258,7 @@ def discover_wav_files_from_sources(dataset_dirs: list[Path], split: str = "all"
 
 # 함수 설명: 'is_dataset_session_dir' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
 def is_dataset_session_dir(path: Path) -> bool:
+    """주어진 폴더가 라벨 하위 폴더를 가진 데이터셋 세션인지 확인합니다."""
     if not path.is_dir():
         return False
     if (path / "metadata.csv").exists():
@@ -254,6 +268,7 @@ def is_dataset_session_dir(path: Path) -> bool:
 
 # 함수 설명: 파일 시스템이나 장치 목록을 훑어 필요한 항목을 수집합니다.
 def list_dataset_sessions(dataset_root: Path) -> list[Path]:
+    """데이터셋 루트 아래에서 실행 가능한 세션 폴더 후보를 찾아 정렬합니다."""
     if not dataset_root.exists() or not dataset_root.is_dir():
         return []
 
@@ -269,6 +284,7 @@ def list_dataset_sessions(dataset_root: Path) -> list[Path]:
 
 # 함수 설명: 사용자에게 보여줄 텍스트나 요약 정보를 생성해 출력합니다.
 def format_available_sessions(dataset_root: Path) -> str:
+    """사용자가 데이터셋 경로를 잘못 줬을 때 보여줄 세션 후보 안내 문구를 만듭니다."""
     sessions = list_dataset_sessions(dataset_root)
     if not sessions:
         return f"No dataset sessions found under: {dataset_root}"
@@ -288,11 +304,13 @@ def format_available_sessions(dataset_root: Path) -> str:
 
 # 함수 설명: 사용자에게 보여줄 텍스트나 요약 정보를 생성해 출력합니다.
 def print_available_sessions(dataset_root: Path) -> None:
+    """현재 데이터셋 루트에서 감지된 세션 목록을 콘솔에 출력합니다."""
     print(format_available_sessions(dataset_root.resolve()))
 
 
 # 함수 설명: 'resolve_dataset_dir' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
 def resolve_dataset_dir(dataset_dir: Path) -> Path:
+    """입력 경로가 존재하는지 확인하고 작업 기준 데이터셋 디렉터리로 확정합니다."""
     resolved = dataset_dir.resolve()
     if resolved.exists():
         if not resolved.is_dir():
@@ -337,6 +355,7 @@ def extract_frame_features(
     mel_filterbank: np.ndarray,
     noise_profile: dsp.NoiseProfile | None = None,
 ) -> dict[str, float | int | str]:
+    """필터링된 한 프레임에서 dsp_features 기반 특징을 계산하고 메타데이터와 합칩니다."""
     feature_row: dict[str, float | int | str] = {
         "file": record.wav_path.name,
         "path": str(record.feature_path),
@@ -359,6 +378,7 @@ def extract_wav_features(
     mel_filterbank: np.ndarray,
     noise_profile: dsp.NoiseProfile | None = None,
 ) -> list[dict[str, float | int | str]]:
+    """하나의 WAV를 읽어 필터링, 프레임 분할, 프레임별 특징 행 생성까지 처리합니다."""
     audio = read_wav_as_float32(record.wav_path, SAMPLE_RATE)
     filtered = apply_bandpass(audio, sos)
 
@@ -389,6 +409,7 @@ def extract_dataset_features(
     split: str = "all",
     noise_profile: dsp.NoiseProfile | None = None,
 ) -> tuple[pd.DataFrame, int, list[str], list[Path]]:
+    """발견된 모든 WAV 파일을 순회해 학습/검증용 feature DataFrame을 생성합니다."""
     wav_files, resolved_dirs = discover_wav_files_from_sources(dataset_dirs, split=split)
 
     if not wav_files:
@@ -437,6 +458,7 @@ def extract_dataset_features(
 
 # 함수 설명: 계산된 결과나 데이터를 파일 또는 출력 장치에 저장합니다.
 def save_features_csv(df: pd.DataFrame, out_path: Path) -> None:
+    """feature DataFrame을 UTF-8 CSV로 저장하고 부모 폴더를 자동 생성합니다."""
     out_path = out_path.resolve()
     out_path.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(out_path, index=False, encoding="utf-8")
@@ -444,6 +466,7 @@ def save_features_csv(df: pd.DataFrame, out_path: Path) -> None:
 
 # 함수 설명: 사용자에게 보여줄 텍스트나 요약 정보를 생성해 출력합니다.
 def print_frame_counts(df: pd.DataFrame) -> None:
+    """라벨과 split별 프레임 수를 출력해 데이터 불균형을 빠르게 확인합니다."""
     print()
     print("=== Frame Counts By Label ===")
     counts = df["label"].value_counts().sort_index()
@@ -467,6 +490,7 @@ def print_frame_counts(df: pd.DataFrame) -> None:
 
 # 함수 설명: 사용자에게 보여줄 텍스트나 요약 정보를 생성해 출력합니다.
 def print_feature_means(df: pd.DataFrame) -> None:
+    """주요 feature 평균을 라벨별로 보여줘 수집 품질과 스케일을 점검합니다."""
     summary_columns = [
         "rms",
         "zcr",
@@ -496,6 +520,7 @@ def print_extraction_summary(
     source_dirs: list[Path],
     noise_profile: dsp.NoiseProfile | None = None,
 ) -> None:
+    """추출 완료 후 파일 수, 프레임 수, 출력 위치, 노이즈 프로파일 사용 여부를 요약합니다."""
     print()
     print("=== Extraction Summary ===")
     print(f"features_csv   : {out_path}")
@@ -512,6 +537,7 @@ def print_extraction_summary(
 
 # 함수 설명: 모델, feature, 산출물 상태를 기준값과 비교해 검증합니다.
 def verify_features_csv(features_csv: Path) -> pd.DataFrame:
+    """기존 feature CSV를 다시 읽어 필수 컬럼, 라벨, 결측/무한대 값을 검증합니다."""
     if not features_csv.exists():
         raise FileNotFoundError(f"features CSV not found: {features_csv}")
 
@@ -532,6 +558,7 @@ def verify_features_csv(features_csv: Path) -> pd.DataFrame:
 
 # 함수 설명: 명령행 옵션을 정의하고 사용자가 입력한 인자를 파싱합니다.
 def parse_args(argv: list[str]) -> argparse.Namespace:
+    """feature 추출, 세션 목록 출력, 검증 전용 모드에 필요한 CLI 옵션을 정의합니다."""
     parser = argparse.ArgumentParser(
         description="Extract DSP and MFCC features from class-separated breath WAV clips."
     )
@@ -576,6 +603,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 # 함수 설명: 스크립트 진입점으로 인자를 읽고 전체 실행 흐름을 호출합니다.
 def main(argv: list[str] | None = None) -> int:
+    """CLI 인자를 해석해 세션 목록, 검증, feature 추출 중 요청된 작업을 실행합니다."""
     configure_utf8_stdio()
     args = parse_args(sys.argv[1:] if argv is None else argv)
 

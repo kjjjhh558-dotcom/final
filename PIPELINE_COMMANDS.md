@@ -1,6 +1,6 @@
 # 실행 명령 모음
 
-최종 정리 시각: 2026-06-01 13:42 KST
+최종 정리 시각: 2026-06-08 00:03 KST
 
 PowerShell에서 `final` 폴더를 현재 위치로 연 뒤 실행합니다. COM 포트 번호는 노트북마다 다를 수 있습니다.
 
@@ -141,3 +141,11 @@ python .\scripts\tools\check_nrf_ble_to_stm32_bridge.py --stm-port COM4 --esp-po
 - 펌웨어 자산 재설치 시 이전 자산은 `backups/firmware_assets/` 아래에 자동 백업됩니다.
 - noise profile subtraction은 현재 STM32 full56 실시간 경로에 적용하지 않습니다.
 - 다른 노트북에서는 COM 포트, CubeIDE 경로, Programmer CLI 경로를 다시 확인하십시오.
+
+## 9. 코드 파일 역할을 확인하는 순서
+
+1. 전체 실행 방향은 `README.md`와 `PROJECT_STRUCTURE.md`를 먼저 확인합니다.
+2. PC 학습/검증 흐름은 `scripts/features/dsp_features.py`, `scripts/features/extract_features.py`, `full56_pipeline/scripts/run_200ms_mfcc_delta_experiment.py`의 파일 머리 설명을 봅니다.
+3. 보드 제어 명령은 `scripts/tools/` 아래 각 파일의 docstring을 보고 COM 포트와 명령 의미를 확인합니다.
+4. STM32 동작은 `mouthnose/Core/Src/main.c`, `breath_features.c`, `breath_ai_app.c`, `max30102_spo2.c`, `mouthnose/USB_DEVICE/App/usbd_cdc_if.c`의 파일 설명과 함수 설명을 따라갑니다.
+5. 무선 자세 경로는 `wireless_bridge/README.md`와 각 `.ino` 파일의 맨 위 설명을 같이 봅니다.

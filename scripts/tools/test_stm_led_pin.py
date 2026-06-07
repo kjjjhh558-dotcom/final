@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
-"""Force STM32 class/pump LEDs on or off for GPIO hardware checks."""
+"""STM32 클래스 LED와 펌프 표시 LED GPIO를 강제로 켜 배선 상태를 확인합니다.
+
+멀티미터나 실제 LED로 PE0~PE3, PE7, PE5가 의도한 라벨/기능에 맞게 연결됐는지 검사합니다."""
 
 from __future__ import annotations
 
@@ -28,6 +30,7 @@ LED_COMMANDS = {
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
+    """강제로 켤 LED/GPIO 대상과 COM 포트 옵션을 정의합니다."""
     parser = argparse.ArgumentParser(
         description="Force STM32 LED GPIOs for multimeter/LED wiring checks."
     )
@@ -43,6 +46,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """선택한 LED TEST 명령을 STM32로 보내 배선 확인을 수행합니다."""
     args = parse_args(sys.argv[1:] if argv is None else argv)
 
     if serial is None:

@@ -1,5 +1,5 @@
 /* USER CODE BEGIN Header */
-/* 파일 설명: USB CDC 가상 COM 포트 송수신과 PC에서 전달하는 AI ON/OFF 텍스트 명령을 처리합니다. */
+/* 파일 설명: USB CDC 가상 COM 포트의 송수신 glue 코드입니다. PC에서 들어오는 AI/LED/PLED/ACT/VALVE/IMU/MAX 명령을 펌웨어 제어 함수로 연결합니다. */
 /**
   ******************************************************************************
   * @file           : usbd_cdc_if.c
@@ -138,7 +138,9 @@ static int8_t CDC_TransmitCplt_FS(uint8_t *pbuf, uint32_t *Len, uint8_t epnum);
 /* USER CODE BEGIN PRIVATE_FUNCTIONS_DECLARATION */
 /* 함수 설명: PC에서 들어온 텍스트를 해석해 STM AI 실시간 추론을 켜거나 끕니다. */
 static void CDC_ProcessTextCommand(uint8_t *buf, uint32_t len);
+/* 함수 설명: 명령 prefix 뒤 숫자 인자를 파싱해 duty나 duration 값으로 반환합니다. */
 static uint8_t CDC_ParseCommandValue(const char *command, const char *prefix, uint32_t *value);
+/* 함수 설명: 0~100 입력은 percent로, 101~1000 입력은 permille로 해석해 PWM duty 범위를 통일합니다. */
 static uint32_t CDC_NormalizeDutyValue(uint32_t value);
 /* USER CODE END PRIVATE_FUNCTIONS_DECLARATION */
 
@@ -370,6 +372,7 @@ static uint8_t CDC_ParseCommandValue(const char *command, const char *prefix, ui
   return 1U;
 }
 
+/* 함수 설명: 0~100 입력은 percent로, 101~1000 입력은 permille로 해석해 PWM duty 범위를 통일합니다. */
 static uint32_t CDC_NormalizeDutyValue(uint32_t value)
 {
   if (value <= 100U) {
@@ -383,6 +386,7 @@ static uint32_t CDC_NormalizeDutyValue(uint32_t value)
   return value;
 }
 
+/* 함수 설명: PC에서 받은 ASCII 명령을 해석해 AI, LED, 펌프, 밸브, IMU, MAX30102 제어 함수로 분기합니다. */
 static void CDC_ProcessTextCommand(uint8_t *buf, uint32_t len)
 {
   char command[24];

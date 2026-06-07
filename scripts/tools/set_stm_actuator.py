@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
-"""Send actuator control commands to STM32 USB CDC firmware."""
+"""STM32 USB CDC 명령으로 구강/목 펌프 액추에이터를 수동 또는 AI 제어 모드로 전환합니다.
+
+ACT ON/OFF/TEST/DUTY/AI ON/AI OFF 명령을 사람이 쓰기 쉬운 CLI 인자로 감싸 하드웨어 확인과 디버깅을 돕습니다."""
 
 from __future__ import annotations
 
@@ -14,6 +16,7 @@ except ImportError:
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
+    """COM 포트, 액추에이터 모드, PWM duty 옵션을 CLI 인자로 정의합니다."""
     parser = argparse.ArgumentParser(description="Send pump/actuator command to STM32 USB CDC firmware.")
     parser.add_argument("port", help="serial port, e.g. COM4")
     parser.add_argument(
@@ -33,6 +36,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 
 def build_command(mode: str, duty: int | None) -> str:
+    """off/test/on/ai/duty 모드를 STM32 ACT 명령 문자열로 변환하고 필수 duty를 검증합니다."""
     if mode == "off":
         return "ACT OFF\n"
     if mode == "ai-on":
@@ -51,6 +55,7 @@ def build_command(mode: str, duty: int | None) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """명령 문자열을 만들고 STM32 USB CDC 포트로 전송합니다."""
     args = parse_args(sys.argv[1:] if argv is None else argv)
 
     if serial is None:

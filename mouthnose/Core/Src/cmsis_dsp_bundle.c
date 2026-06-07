@@ -1,3 +1,9 @@
+/*
+ * 파일 설명:
+ *   STM32CubeIDE 프로젝트가 CMSIS-DSP RFFT/MFCC 관련 소스를 한 번에 빌드하도록 묶어주는 translation unit입니다.
+ *   직접 알고리즘을 구현하는 파일이 아니라, third_party/CMSIS-DSP 소스 포함 위치를 관리하는 빌드용 파일입니다.
+ */
+
 #include "breath_fft_backend_config.h"
 
 #if BREATH_FFT_BACKEND == BREATH_FFT_BACKEND_CMSIS_DSP

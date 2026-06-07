@@ -1,5 +1,5 @@
 ﻿/* USER CODE BEGIN Header */
-/* 파일 설명: ADC DMA로 마이크 샘플을 수집하고 USB CDC 오디오 패킷과 STM AI 예측 패킷을 PC로 전송하는 메인 펌웨어입니다. */
+/* 파일 설명: STM32F407 메인 펌웨어입니다. 마이크 오디오 수집, USB CDC 오디오/AI/MAX30102/IMU 텔레메트리 전송, full56 AI 추론, 클래스 LED, 구강 펌프/밸브, 사이드 에어백 제어를 통합합니다. */
 /**
   ******************************************************************************
   * @file           : main.c
@@ -363,18 +363,26 @@ static void MX_USART1_UART_Init(void);
 static void MX_USART2_UART_Init(void);
 /* 함수 설명: MAX30102 RED/IR/SpO2 값을 USB CDC telemetry packet으로 주기 전송합니다. */
 static void Max30102Telemetry_Service(void);
+/* 함수 설명: SideAirbag_Init는 구강/사이드 에어백 밸브와 펌프 시퀀스를 제어합니다. */
 static void SideAirbag_Init(void);
+/* 함수 설명: SideAirbag_Service는 구강/사이드 에어백 밸브와 펌프 시퀀스를 제어합니다. */
 static void SideAirbag_Service(void);
+/* 함수 설명: ImuBridge_Init는 ESP32-S3에서 들어오는 IMU 자세 토큰을 파싱하고 STM32 제어 상태로 반영합니다. */
 static void ImuBridge_Init(void);
+/* 함수 설명: ImuBridge_Service는 ESP32-S3에서 들어오는 IMU 자세 토큰을 파싱하고 STM32 제어 상태로 반영합니다. */
 static void ImuBridge_Service(void);
+/* 함수 설명: ImuBridgeTelemetry_Service는 ESP32-S3에서 들어오는 IMU 자세 토큰을 파싱하고 STM32 제어 상태로 반영합니다. */
 static void ImuBridgeTelemetry_Service(void);
+/* 함수 설명: ImuBridgeHandleByte는 ESP32-S3에서 들어오는 IMU 자세 토큰을 파싱하고 STM32 제어 상태로 반영합니다. */
 static void ImuBridgeHandleByte(uint8_t byte);
+/* 함수 설명: ImuBridgeParseToken는 ESP32-S3에서 들어오는 IMU 자세 토큰을 파싱하고 STM32 제어 상태로 반영합니다. */
 static void ImuBridgeParseToken(const char *token);
 
 /* USER CODE BEGIN 0 */
 
 /* 함수 설명: ADC 블록의 최소/최대/평균 값을 계산해 마이크 입력 상태 디버깅에 사용합니다. */
 #if (MIC_BACKEND == MIC_BACKEND_ADC_MAX9814)
+/* 함수 설명: AnalyzeAudioBlock는 마이크 sample을 PCM으로 변환하거나 USB CDC 오디오 패킷으로 전송합니다. */
 static void AnalyzeAudioBlock(uint16_t *buf, uint32_t len)
 {
     uint16_t min_val = 4095;
@@ -403,6 +411,7 @@ static void AnalyzeAudioBlock(uint16_t *buf, uint32_t len)
 
 /* 함수 설명: USB CDC 전송 완료를 제한 시간 동안 기다리며 패킷을 전송합니다. */
 #endif
+/* 함수 설명: CDC_Transmit_WithTimeout는 이 파일의 펌웨어 처리 흐름 중 하나의 세부 단계를 담당합니다. */
 static uint8_t CDC_Transmit_WithTimeout(uint8_t *data, uint16_t len)
 {
     uint32_t start_tick = HAL_GetTick();
@@ -450,6 +459,7 @@ static void ADC_ONLY_UNUSED SendAudioPacket(uint16_t *data, uint16_t sample_coun
     SendAudioPacketWithFormat(data, sample_count, AUDIO_FORMAT_ADC_U16);
 }
 
+/* 함수 설명: Max30102Telemetry_SetEnabled는 MAX30102 센서 초기화, sample 처리, 텔레메트리 상태 갱신을 담당합니다. */
 void Max30102Telemetry_SetEnabled(uint32_t enabled)
 {
     max30102_telemetry_enabled = (enabled != 0U) ? 1U : 0U;
@@ -459,11 +469,13 @@ void Max30102Telemetry_SetEnabled(uint32_t enabled)
     }
 }
 
+/* 함수 설명: Max30102Telemetry_IsEnabled는 MAX30102 센서 초기화, sample 처리, 텔레메트리 상태 갱신을 담당합니다. */
 uint32_t Max30102Telemetry_IsEnabled(void)
 {
     return max30102_telemetry_enabled;
 }
 
+/* 함수 설명: Max30102TelemetryFlags는 MAX30102 센서 초기화, sample 처리, 텔레메트리 상태 갱신을 담당합니다. */
 static uint32_t Max30102TelemetryFlags(const Max30102Spo2State *state)
 {
     uint32_t flags = 0U;
@@ -481,6 +493,7 @@ static uint32_t Max30102TelemetryFlags(const Max30102Spo2State *state)
     return flags;
 }
 
+/* 함수 설명: Max30102Telemetry_Service는 MAX30102 센서 초기화, sample 처리, 텔레메트리 상태 갱신을 담당합니다. */
 static void Max30102Telemetry_Service(void)
 {
     Max30102Spo2State state;
@@ -534,6 +547,7 @@ static int16_t ClampToI16(int32_t value)
  * MSW/LSW를 조립한 뒤 24-bit 값을 int16 PCM으로 줄입니다.
  */
 #if (MIC_BACKEND == MIC_BACKEND_I2S_ICS43434)
+/* 함수 설명: I2S_RawToPcm16는 마이크 sample을 PCM으로 변환하거나 USB CDC 오디오 패킷으로 전송합니다. */
 static int16_t I2S_RawToPcm16(uint16_t msw, uint16_t lsw, int32_t *raw24_out)
 {
     const uint32_t word32 = ((uint32_t)msw << 16) | (uint32_t)lsw;
@@ -547,6 +561,7 @@ static int16_t I2S_RawToPcm16(uint16_t msw, uint16_t lsw, int32_t *raw24_out)
     return ClampToI16(pcm32);
 }
 
+/* 함수 설명: ConvertI2SBlockToPcm16는 마이크 sample을 PCM으로 변환하거나 USB CDC 오디오 패킷으로 전송합니다. */
 static uint32_t ConvertI2SBlockToPcm16(uint16_t *raw, uint32_t halfword_count, int16_t *pcm, uint32_t pcm_capacity)
 {
     uint32_t out = 0U;
@@ -613,6 +628,7 @@ static uint32_t ConvertI2SBlockToPcm16(uint16_t *raw, uint32_t halfword_count, i
     return out;
 }
 
+/* 함수 설명: ProcessAndSendPcm16는 마이크 sample을 PCM으로 변환하거나 USB CDC 오디오 패킷으로 전송합니다. */
 static void ProcessAndSendPcm16(int16_t *buf, uint32_t len)
 {
     uint32_t offset = 0U;
@@ -629,6 +645,7 @@ static void ProcessAndSendPcm16(int16_t *buf, uint32_t len)
 
 /* 함수 설명: 5개 분류 결과를 PE0~PE3/PE7 LED 핀 중 하나로 매핑합니다. */
 #endif
+/* 함수 설명: ClassLedPinFromPrediction는 AI 라벨 표시용 클래스 LED 상태를 설정하거나 주기적으로 갱신합니다. */
 static uint16_t ClassLedPinFromPrediction(uint16_t predicted)
 {
     switch (predicted) {
@@ -669,6 +686,7 @@ static uint16_t ADC_ONLY_UNUSED ClassLedPredictionForMode(uint16_t raw_predicted
     return stable_predicted;
 }
 
+/* 함수 설명: BreathLed_SetMode는 AI 라벨 표시용 클래스 LED 상태를 설정하거나 주기적으로 갱신합니다. */
 void BreathLed_SetMode(uint32_t mode)
 {
     class_led_test_active = 0U;
@@ -682,11 +700,13 @@ void BreathLed_SetMode(uint32_t mode)
     ClassLedAllOff();
 }
 
+/* 함수 설명: BreathLed_GetMode는 AI 라벨 표시용 클래스 LED 상태를 설정하거나 주기적으로 갱신합니다. */
 uint32_t BreathLed_GetMode(void)
 {
     return led_mode;
 }
 
+/* 함수 설명: BreathLed_TestOff는 AI 라벨 표시용 클래스 LED 상태를 설정하거나 주기적으로 갱신합니다. */
 void BreathLed_TestOff(void)
 {
     class_led_test_active = 0U;
@@ -695,6 +715,7 @@ void BreathLed_TestOff(void)
     HAL_GPIO_WritePin(PUMP_ACTION_LED_PORT, PUMP_ACTION_LED_PIN, GPIO_PIN_RESET);
 }
 
+/* 함수 설명: BreathLed_TestClass는 AI 라벨 표시용 클래스 LED 상태를 설정하거나 주기적으로 갱신합니다. */
 void BreathLed_TestClass(uint32_t class_index)
 {
     const uint16_t pin = ClassLedPinFromPrediction((uint16_t)class_index);
@@ -711,6 +732,7 @@ void BreathLed_TestClass(uint32_t class_index)
     }
 }
 
+/* 함수 설명: BreathLed_TestPumpIndicator는 AI 라벨 표시용 클래스 LED 상태를 설정하거나 주기적으로 갱신합니다. */
 void BreathLed_TestPumpIndicator(void)
 {
     led_mode = BREATH_LED_MODE_OFF;
@@ -719,6 +741,7 @@ void BreathLed_TestPumpIndicator(void)
     HAL_GPIO_WritePin(PUMP_ACTION_LED_PORT, PUMP_ACTION_LED_PIN, GPIO_PIN_SET);
 }
 
+/* 함수 설명: BreathLed_TestAll는 AI 라벨 표시용 클래스 LED 상태를 설정하거나 주기적으로 갱신합니다. */
 void BreathLed_TestAll(void)
 {
     led_mode = BREATH_LED_MODE_OFF;
@@ -779,11 +802,13 @@ static void ADC_ONLY_UNUSED AiStableReset(void)
     ai_stable_vote_count = 0U;
 }
 
+/* 함수 설명: AiPredictionIsValid는 full56 AI 추론 입력 프레임 준비, 예측 실행, 결과 패킷 전송을 담당합니다. */
 static uint8_t AiPredictionIsValid(uint16_t predicted)
 {
     return (predicted < BREATH_AI_LABEL_COUNT) ? 1U : 0U;
 }
 
+/* 함수 설명: AiPredictionIsNoise는 full56 AI 추론 입력 프레임 준비, 예측 실행, 결과 패킷 전송을 담당합니다. */
 static uint8_t AiPredictionIsNoise(uint16_t predicted)
 {
     return (predicted == AI_NOISE_CLASS_INDEX) ? 1U : 0U;
@@ -871,13 +896,16 @@ static uint16_t ADC_ONLY_UNUSED AiStableUpdate(
 
 /* 함수 설명: ADC 샘플을 AI 입력 프레임 크기에 맞춰 DC 제거 후 int16 PCM으로 변환합니다. */
 static void ActuatorResetMouthHistory(void);
+/* 함수 설명: ActuatorOutputStart는 PA6/PA7 PWM 펌프 출력의 duty, 시작, 정지, 안전 제한을 관리합니다. */
 static void ActuatorOutputStart(uint16_t trigger_class, float probability);
 
+/* 함수 설명: ActuatorIsMouthClass는 PA6/PA7 PWM 펌프 출력의 duty, 시작, 정지, 안전 제한을 관리합니다. */
 static uint8_t ActuatorIsMouthClass(uint16_t predicted)
 {
     return ((predicted == 0U) || (predicted == 1U)) ? 1U : 0U;
 }
 
+/* 함수 설명: PumpActionLedResetWindow는 mouth 계열 예측에 따른 펌프 동작 표시 LED 정책을 관리합니다. */
 static void PumpActionLedResetWindow(void)
 {
     for (uint32_t i = 0U; i < PUMP_ACTION_LED_HISTORY_SIZE; ++i) {
@@ -890,23 +918,27 @@ static void PumpActionLedResetWindow(void)
     pump_action_led_window_mouth = 0U;
 }
 
+/* 함수 설명: PumpActionLedOff는 mouth 계열 예측에 따른 펌프 동작 표시 LED 정책을 관리합니다. */
 static void PumpActionLedOff(void)
 {
     HAL_GPIO_WritePin(PUMP_ACTION_LED_PORT, PUMP_ACTION_LED_PIN, GPIO_PIN_RESET);
     pump_action_led_active = 0U;
 }
 
+/* 함수 설명: PumpActionLedIsBlocking는 mouth 계열 예측에 따른 펌프 동작 표시 LED 정책을 관리합니다. */
 static uint8_t PumpActionLedIsBlocking(void)
 {
     return ((pump_action_led_enabled != 0U) && (pump_action_led_active != 0U)) ? 1U : 0U;
 }
 
+/* 함수 설명: ImuBridgeAllowsOralPump는 ESP32-S3에서 들어오는 IMU 자세 토큰을 파싱하고 STM32 제어 상태로 반영합니다. */
 static uint8_t ImuBridgeAllowsOralPump(void)
 {
     return ((imu_bridge_state != IMU_POSTURE_SNIFFING) &&
             (imu_bridge_state != IMU_POSTURE_ANGLE_OVER)) ? 1U : 0U;
 }
 
+/* 함수 설명: PumpActionLedStart는 mouth 계열 예측에 따른 펌프 동작 표시 LED 정책을 관리합니다. */
 static void PumpActionLedStart(uint16_t trigger_class)
 {
     if (ImuBridgeAllowsOralPump() == 0U) {
@@ -924,6 +956,7 @@ static void PumpActionLedStart(uint16_t trigger_class)
     PumpActionLedResetWindow();
 }
 
+/* 함수 설명: PumpActionLedService는 mouth 계열 예측에 따른 펌프 동작 표시 LED 정책을 관리합니다. */
 static void PumpActionLedService(void)
 {
     if (pump_action_led_enabled == 0U) {
@@ -945,6 +978,7 @@ static void PumpActionLedService(void)
     }
 }
 
+/* 함수 설명: PumpActionLedRecordPrediction는 mouth 계열 예측에 따른 펌프 동작 표시 LED 정책을 관리합니다. */
 static void PumpActionLedRecordPrediction(uint16_t led_predicted)
 {
     const uint32_t now = HAL_GetTick();
@@ -983,6 +1017,7 @@ static void PumpActionLedRecordPrediction(uint16_t led_predicted)
     }
 }
 
+/* 함수 설명: BreathPumpLed_SetEnabled는 mouth 계열 예측에 따른 펌프 동작 표시 LED 정책을 관리합니다. */
 void BreathPumpLed_SetEnabled(uint32_t enabled)
 {
     pump_action_led_enabled = (enabled != 0U) ? 1U : 0U;
@@ -992,16 +1027,19 @@ void BreathPumpLed_SetEnabled(uint32_t enabled)
     }
 }
 
+/* 함수 설명: BreathPumpLed_IsEnabled는 mouth 계열 예측에 따른 펌프 동작 표시 LED 정책을 관리합니다. */
 uint32_t BreathPumpLed_IsEnabled(void)
 {
     return pump_action_led_enabled;
 }
 
+/* 함수 설명: BreathPumpLed_IsActive는 mouth 계열 예측에 따른 펌프 동작 표시 LED 정책을 관리합니다. */
 uint32_t BreathPumpLed_IsActive(void)
 {
     return pump_action_led_active;
 }
 
+/* 함수 설명: ActuatorClampDuty는 PA6/PA7 PWM 펌프 출력의 duty, 시작, 정지, 안전 제한을 관리합니다. */
 static uint32_t ActuatorClampDuty(uint32_t duty_permille)
 {
     if (duty_permille > 1000U) {
@@ -1011,6 +1049,7 @@ static uint32_t ActuatorClampDuty(uint32_t duty_permille)
     return duty_permille;
 }
 
+/* 함수 설명: ActuatorApplyDuty는 PA6/PA7 PWM 펌프 출력의 duty, 시작, 정지, 안전 제한을 관리합니다. */
 static void ActuatorApplyDuty(uint32_t duty_permille)
 {
     const uint32_t duty = ActuatorClampDuty(duty_permille);
@@ -1019,6 +1058,7 @@ static void ActuatorApplyDuty(uint32_t duty_permille)
     __HAL_TIM_SET_COMPARE(&htim3, PUMP_PWM_CHANNEL, compare);
 }
 
+/* 함수 설명: OralAirValveSet는 구강/사이드 에어백 밸브와 펌프 시퀀스를 제어합니다. */
 static void OralAirValveSet(uint8_t enabled)
 {
     const uint32_t next_active = (enabled != 0U) ? 1U : 0U;
@@ -1038,6 +1078,7 @@ static void OralAirValveSet(uint8_t enabled)
         (next_active != 0U) ? GPIO_PIN_SET : GPIO_PIN_RESET);
 }
 
+/* 함수 설명: ActuatorResetMouthHistory는 PA6/PA7 PWM 펌프 출력의 duty, 시작, 정지, 안전 제한을 관리합니다. */
 static void ActuatorResetMouthHistory(void)
 {
     actuator_stable_mouth_active = 0U;
@@ -1046,6 +1087,7 @@ static void ActuatorResetMouthHistory(void)
     actuator_stable_mouth_ms = 0U;
 }
 
+/* 함수 설명: ActuatorOutputStop는 PA6/PA7 PWM 펌프 출력의 duty, 시작, 정지, 안전 제한을 관리합니다. */
 static void ActuatorOutputStop(uint8_t safety_stop)
 {
     if (actuator_output_active != 0U) {
@@ -1061,6 +1103,7 @@ static void ActuatorOutputStop(uint8_t safety_stop)
     }
 }
 
+/* 함수 설명: ActuatorOutputStart는 PA6/PA7 PWM 펌프 출력의 duty, 시작, 정지, 안전 제한을 관리합니다. */
 static void ActuatorOutputStart(uint16_t trigger_class, float probability)
 {
     const uint32_t now = HAL_GetTick();
@@ -1077,6 +1120,7 @@ static void ActuatorOutputStart(uint16_t trigger_class, float probability)
     ActuatorResetMouthHistory();
 }
 
+/* 함수 설명: OralAirValve_Service는 구강/사이드 에어백 밸브와 펌프 시퀀스를 제어합니다. */
 static void OralAirValve_Service(void)
 {
     const uint32_t now = HAL_GetTick();
@@ -1090,6 +1134,7 @@ static void OralAirValve_Service(void)
     }
 }
 
+/* 함수 설명: OralAirValve_ManualOn는 구강/사이드 에어백 밸브와 펌프 시퀀스를 제어합니다. */
 void OralAirValve_ManualOn(void)
 {
     actuator_ai_control_enabled = 0U;
@@ -1100,6 +1145,7 @@ void OralAirValve_ManualOn(void)
     OralAirValveSet(1U);
 }
 
+/* 함수 설명: OralAirValve_ManualOff는 구강/사이드 에어백 밸브와 펌프 시퀀스를 제어합니다. */
 void OralAirValve_ManualOff(void)
 {
     oral_air_valve_manual_active = 0U;
@@ -1107,6 +1153,7 @@ void OralAirValve_ManualOff(void)
     OralAirValveSet(0U);
 }
 
+/* 함수 설명: OralAirValve_ManualPulse는 구강/사이드 에어백 밸브와 펌프 시퀀스를 제어합니다. */
 void OralAirValve_ManualPulse(uint32_t duration_ms)
 {
     const uint32_t pulse_ms = (duration_ms == 0U) ? ORAL_AIR_VALVE_TEST_MS : duration_ms;
@@ -1120,6 +1167,7 @@ void OralAirValve_ManualPulse(uint32_t duration_ms)
     OralAirValveSet(1U);
 }
 
+/* 함수 설명: OralAirValve_IsActive는 구강/사이드 에어백 밸브와 펌프 시퀀스를 제어합니다. */
 uint32_t OralAirValve_IsActive(void)
 {
     return oral_air_valve_active;
@@ -1169,6 +1217,7 @@ static void ADC_ONLY_UNUSED ActuatorHandlePrediction(uint16_t predicted, float p
     }
 }
 
+/* 함수 설명: BreathActuator_Init는 PA6/PA7 PWM 펌프 출력의 duty, 시작, 정지, 안전 제한을 관리합니다. */
 static void BreathActuator_Init(void)
 {
     ActuatorApplyDuty(0U);
@@ -1177,6 +1226,7 @@ static void BreathActuator_Init(void)
     OralAirValveSet(0U);
 }
 
+/* 함수 설명: BreathActuator_Service는 PA6/PA7 PWM 펌프 출력의 duty, 시작, 정지, 안전 제한을 관리합니다. */
 static void BreathActuator_Service(void)
 {
     const uint32_t now = HAL_GetTick();
@@ -1199,6 +1249,7 @@ static void BreathActuator_Service(void)
     }
 }
 
+/* 함수 설명: BreathActuator_SetAiControlEnabled는 PA6/PA7 PWM 펌프 출력의 duty, 시작, 정지, 안전 제한을 관리합니다. */
 void BreathActuator_SetAiControlEnabled(uint32_t enabled)
 {
     actuator_ai_control_enabled = (enabled != 0U) ? 1U : 0U;
@@ -1209,21 +1260,25 @@ void BreathActuator_SetAiControlEnabled(uint32_t enabled)
     }
 }
 
+/* 함수 설명: BreathActuator_IsAiControlEnabled는 PA6/PA7 PWM 펌프 출력의 duty, 시작, 정지, 안전 제한을 관리합니다. */
 uint32_t BreathActuator_IsAiControlEnabled(void)
 {
     return actuator_ai_control_enabled;
 }
 
+/* 함수 설명: BreathActuator_SetDutyPermille는 PA6/PA7 PWM 펌프 출력의 duty, 시작, 정지, 안전 제한을 관리합니다. */
 void BreathActuator_SetDutyPermille(uint32_t duty_permille)
 {
     actuator_duty_permille = ActuatorClampDuty(duty_permille);
 }
 
+/* 함수 설명: BreathActuator_GetDutyPermille는 PA6/PA7 PWM 펌프 출력의 duty, 시작, 정지, 안전 제한을 관리합니다. */
 uint32_t BreathActuator_GetDutyPermille(void)
 {
     return actuator_duty_permille;
 }
 
+/* 함수 설명: BreathActuator_ManualOn는 PA6/PA7 PWM 펌프 출력의 duty, 시작, 정지, 안전 제한을 관리합니다. */
 void BreathActuator_ManualOn(uint32_t duty_permille)
 {
     BreathActuator_SetAiControlEnabled(0U);
@@ -1232,6 +1287,7 @@ void BreathActuator_ManualOn(uint32_t duty_permille)
     ActuatorOutputStart(ACTUATOR_CLASS_NONE, 0.0f);
 }
 
+/* 함수 설명: BreathActuator_ManualPulse는 PA6/PA7 PWM 펌프 출력의 duty, 시작, 정지, 안전 제한을 관리합니다. */
 void BreathActuator_ManualPulse(uint32_t duty_permille, uint32_t duration_ms)
 {
     const uint32_t pulse_ms = (duration_ms == 0U) ? ACTUATOR_TEST_MS : duration_ms;
@@ -1243,6 +1299,7 @@ void BreathActuator_ManualPulse(uint32_t duty_permille, uint32_t duration_ms)
     ActuatorOutputStart(ACTUATOR_CLASS_NONE, 0.0f);
 }
 
+/* 함수 설명: BreathActuator_Off는 PA6/PA7 PWM 펌프 출력의 duty, 시작, 정지, 안전 제한을 관리합니다. */
 void BreathActuator_Off(void)
 {
     BreathActuator_SetAiControlEnabled(0U);
@@ -1251,6 +1308,7 @@ void BreathActuator_Off(void)
     OralAirValve_ManualOff();
 }
 
+/* 함수 설명: SideAirbagApplyDuty는 구강/사이드 에어백 밸브와 펌프 시퀀스를 제어합니다. */
 static void SideAirbagApplyDuty(uint32_t duty_permille)
 {
     const uint32_t duty = ActuatorClampDuty(duty_permille);
@@ -1259,6 +1317,7 @@ static void SideAirbagApplyDuty(uint32_t duty_permille)
     __HAL_TIM_SET_COMPARE(&htim3, SIDE_PUMP_PWM_CHANNEL, compare);
 }
 
+/* 함수 설명: SideAirbagValveSet는 구강/사이드 에어백 밸브와 펌프 시퀀스를 제어합니다. */
 static void SideAirbagValveSet(uint8_t enabled)
 {
     const uint32_t next_active = (enabled != 0U) ? 1U : 0U;
@@ -1278,6 +1337,7 @@ static void SideAirbagValveSet(uint8_t enabled)
         (next_active != 0U) ? GPIO_PIN_SET : GPIO_PIN_RESET);
 }
 
+/* 함수 설명: SideAirbagStopPump는 PA6/PA7 PWM 펌프 출력의 duty, 시작, 정지, 안전 제한을 관리합니다. */
 static void SideAirbagStopPump(uint8_t safety_stop)
 {
     if (side_air_pump_active != 0U) {
@@ -1292,6 +1352,7 @@ static void SideAirbagStopPump(uint8_t safety_stop)
     }
 }
 
+/* 함수 설명: SideAirbagStartPump는 PA6/PA7 PWM 펌프 출력의 duty, 시작, 정지, 안전 제한을 관리합니다. */
 static void SideAirbagStartPump(void)
 {
     if (side_air_pump_active == 0U) {
@@ -1304,6 +1365,7 @@ static void SideAirbagStartPump(void)
     SideAirbagApplyDuty(side_air_duty_permille);
 }
 
+/* 함수 설명: SideAirbag_Init는 구강/사이드 에어백 밸브와 펌프 시퀀스를 제어합니다. */
 static void SideAirbag_Init(void)
 {
     SideAirbagApplyDuty(0U);
@@ -1312,6 +1374,7 @@ static void SideAirbag_Init(void)
     SideAirbagValveSet(0U);
 }
 
+/* 함수 설명: SideAirbag_Service는 구강/사이드 에어백 밸브와 펌프 시퀀스를 제어합니다. */
 static void SideAirbag_Service(void)
 {
     const uint32_t now = HAL_GetTick();
@@ -1334,11 +1397,13 @@ static char ImuBridgeToUpper(char ch)
     return ch;
 }
 
+/* 함수 설명: ImuBridgeTokenEquals는 ESP32-S3에서 들어오는 IMU 자세 토큰을 파싱하고 STM32 제어 상태로 반영합니다. */
 static uint8_t ImuBridgeTokenEquals(const char *token, const char *expected)
 {
     return (strcmp(token, expected) == 0) ? 1U : 0U;
 }
 
+/* 함수 설명: ImuBridgeSetPendingState는 ESP32-S3에서 들어오는 IMU 자세 토큰을 파싱하고 STM32 제어 상태로 반영합니다. */
 static void ImuBridgeSetPendingState(uint32_t state)
 {
     imu_bridge_pending_state = state;
@@ -1346,6 +1411,7 @@ static void ImuBridgeSetPendingState(uint32_t state)
     imu_bridge_valid_count++;
 }
 
+/* 함수 설명: ImuBridgeParseToken는 ESP32-S3에서 들어오는 IMU 자세 토큰을 파싱하고 STM32 제어 상태로 반영합니다. */
 static void ImuBridgeParseToken(const char *token)
 {
     uint32_t state = IMU_POSTURE_UNKNOWN;
@@ -1384,6 +1450,7 @@ static void ImuBridgeParseToken(const char *token)
     ImuBridgeSetPendingState(state);
 }
 
+/* 함수 설명: ImuBridgeFlushToken는 ESP32-S3에서 들어오는 IMU 자세 토큰을 파싱하고 STM32 제어 상태로 반영합니다. */
 static void ImuBridgeFlushToken(void)
 {
     if (imu_bridge_token_len == 0U) {
@@ -1395,6 +1462,7 @@ static void ImuBridgeFlushToken(void)
     imu_bridge_token_len = 0U;
 }
 
+/* 함수 설명: ImuBridgeHandleByte는 ESP32-S3에서 들어오는 IMU 자세 토큰을 파싱하고 STM32 제어 상태로 반영합니다. */
 static void ImuBridgeHandleByte(uint8_t byte)
 {
     const char ch = ImuBridgeToUpper((char)byte);
@@ -1422,6 +1490,7 @@ static void ImuBridgeHandleByte(uint8_t byte)
     }
 }
 
+/* 함수 설명: ImuBridge_Init는 ESP32-S3에서 들어오는 IMU 자세 토큰을 파싱하고 STM32 제어 상태로 반영합니다. */
 static void ImuBridge_Init(void)
 {
     imu_bridge_state = IMU_POSTURE_UNKNOWN;
@@ -1431,6 +1500,7 @@ static void ImuBridge_Init(void)
     (void)HAL_UART_Receive_IT(&huart1, &imu_uart_rx_byte, 1U);
 }
 
+/* 함수 설명: ImuBridge_Service는 ESP32-S3에서 들어오는 IMU 자세 토큰을 파싱하고 STM32 제어 상태로 반영합니다. */
 static void ImuBridge_Service(void)
 {
     uint32_t state;
@@ -1475,17 +1545,20 @@ static void ImuBridge_Service(void)
     }
 }
 
+/* 함수 설명: ImuBridgeTelemetry_SetEnabled는 ESP32-S3에서 들어오는 IMU 자세 토큰을 파싱하고 STM32 제어 상태로 반영합니다. */
 void ImuBridgeTelemetry_SetEnabled(uint32_t enabled)
 {
     imu_bridge_telemetry_enabled = (enabled != 0U) ? 1U : 0U;
     imu_bridge_telemetry_last_tick = 0U;
 }
 
+/* 함수 설명: ImuBridgeTelemetry_IsEnabled는 ESP32-S3에서 들어오는 IMU 자세 토큰을 파싱하고 STM32 제어 상태로 반영합니다. */
 uint32_t ImuBridgeTelemetry_IsEnabled(void)
 {
     return imu_bridge_telemetry_enabled;
 }
 
+/* 함수 설명: ImuBridgeTelemetry_ResetCounters는 ESP32-S3에서 들어오는 IMU 자세 토큰을 파싱하고 STM32 제어 상태로 반영합니다. */
 void ImuBridgeTelemetry_ResetCounters(void)
 {
     imu_bridge_rx_count = 0U;
@@ -1496,6 +1569,7 @@ void ImuBridgeTelemetry_ResetCounters(void)
     imu_bridge_telemetry_seq = 0U;
 }
 
+/* 함수 설명: ImuBridgeTelemetry_Service는 ESP32-S3에서 들어오는 IMU 자세 토큰을 파싱하고 STM32 제어 상태로 반영합니다. */
 static void ImuBridgeTelemetry_Service(void)
 {
     ImuBridgeTelemetryPacket_t packet;
@@ -1535,6 +1609,7 @@ static void ImuBridgeTelemetry_Service(void)
 }
 
 #if (MIC_BACKEND == MIC_BACKEND_ADC_MAX9814)
+/* 함수 설명: PrepareAiPcmFrameFromAdc는 full56 AI 추론 입력 프레임 준비, 예측 실행, 결과 패킷 전송을 담당합니다. */
 static uint8_t PrepareAiPcmFrameFromAdc(uint16_t *buf, uint32_t len)
 {
     if (BreathAI_IsLiveInferenceEnabled() == 0U) {
@@ -1578,6 +1653,7 @@ static uint8_t PrepareAiPcmFrameFromAdc(uint16_t *buf, uint32_t len)
 #endif
 
 #if (MIC_BACKEND == MIC_BACKEND_I2S_ICS43434)
+/* 함수 설명: PrepareAiPcmFrameFromPcm16는 full56 AI 추론 입력 프레임 준비, 예측 실행, 결과 패킷 전송을 담당합니다. */
 static uint8_t PrepareAiPcmFrameFromPcm16(const int16_t *buf, uint32_t len)
 {
     if (BreathAI_IsLiveInferenceEnabled() == 0U) {
@@ -1631,6 +1707,7 @@ static uint8_t PrepareAiPcmFrameFromPcm16(const int16_t *buf, uint32_t len)
 }
 #endif
 
+/* 함수 설명: SendAiPredictionPacket는 full56 AI 추론 입력 프레임 준비, 예측 실행, 결과 패킷 전송을 담당합니다. */
 static void SendAiPredictionPacket(
     breath_ai_status_t status,
     const float probabilities[BREATH_AI_LABEL_COUNT],
@@ -1722,6 +1799,7 @@ static void RunAiInferenceAndSend(uint32_t audio_seq_snapshot)
 
 /* 함수 설명: DMA half/full 버퍼를 오디오 패킷으로 나누고 필요하면 AI 프레임도 갱신합니다. */
 #if (MIC_BACKEND == MIC_BACKEND_ADC_MAX9814)
+/* 함수 설명: ProcessAndSend는 이 파일의 펌웨어 처리 흐름 중 하나의 세부 단계를 담당합니다. */
 static void ProcessAndSend(uint16_t *buf, uint32_t len)
 {
     uint32_t offset = 0;
@@ -2205,6 +2283,7 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
     }
 }
 
+/* 함수 설명: HAL_I2S_RxHalfCpltCallback는 HAL interrupt/DMA callback으로 들어온 완료 이벤트를 펌웨어 상태 플래그로 바꿉니다. */
 void HAL_I2S_RxHalfCpltCallback(I2S_HandleTypeDef *hi2s)
 {
     if (hi2s->Instance == SPI2)
@@ -2214,6 +2293,7 @@ void HAL_I2S_RxHalfCpltCallback(I2S_HandleTypeDef *hi2s)
     }
 }
 
+/* 함수 설명: HAL_I2S_RxCpltCallback는 HAL interrupt/DMA callback으로 들어온 완료 이벤트를 펌웨어 상태 플래그로 바꿉니다. */
 void HAL_I2S_RxCpltCallback(I2S_HandleTypeDef *hi2s)
 {
     if (hi2s->Instance == SPI2)
@@ -2223,6 +2303,7 @@ void HAL_I2S_RxCpltCallback(I2S_HandleTypeDef *hi2s)
     }
 }
 
+/* 함수 설명: HAL_I2SEx_TxRxHalfCpltCallback는 HAL interrupt/DMA callback으로 들어온 완료 이벤트를 펌웨어 상태 플래그로 바꿉니다. */
 void HAL_I2SEx_TxRxHalfCpltCallback(I2S_HandleTypeDef *hi2s)
 {
     if (hi2s->Instance == SPI2)
@@ -2232,6 +2313,7 @@ void HAL_I2SEx_TxRxHalfCpltCallback(I2S_HandleTypeDef *hi2s)
     }
 }
 
+/* 함수 설명: HAL_I2SEx_TxRxCpltCallback는 HAL interrupt/DMA callback으로 들어온 완료 이벤트를 펌웨어 상태 플래그로 바꿉니다. */
 void HAL_I2SEx_TxRxCpltCallback(I2S_HandleTypeDef *hi2s)
 {
     if (hi2s->Instance == SPI2)
@@ -2241,6 +2323,7 @@ void HAL_I2SEx_TxRxCpltCallback(I2S_HandleTypeDef *hi2s)
     }
 }
 
+/* 함수 설명: HAL_UART_RxCpltCallback는 HAL interrupt/DMA callback으로 들어온 완료 이벤트를 펌웨어 상태 플래그로 바꿉니다. */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
     if (huart->Instance == USART1)

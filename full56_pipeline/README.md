@@ -1,6 +1,6 @@
 # full56 모델 파이프라인
 
-최종 정리 시각: 2026-06-01 13:42 KST
+최종 정리 시각: 2026-06-08 00:03 KST
 
 이 폴더는 현재 STM32 펌웨어에 탑재된 56차원 모델의 PC 학습과 변환 작업공간입니다.
 
@@ -40,3 +40,10 @@ MFCC delta-delta 13
 ```
 
 `scripts/features/extract_features.py`와 `scripts/features/dsp_features.py`는 이 폴더 바깥에 있지만, full56 코드가 필터 설계와 멜 필터뱅크 같은 공통 함수를 가져와 사용합니다.
+
+## 주석 기준
+
+- `scripts/run_200ms_mfcc_delta_experiment.py`는 200 ms 프레임, 활동 구간 재라벨링, full56 feature 생성, Keras 학습, 평가 저장 흐름을 함수별 docstring으로 설명합니다.
+- `scripts/export_full56_stm32_candidate.py`는 production 펌웨어를 건드리지 않는 후보 export 단계만 설명합니다.
+- `scripts/install_full56_firmware_candidate.py`는 백업, ST Edge AI 재생성, C 헤더 생성, 펌웨어 자산 설치 단계를 함수별로 설명합니다.
+- `scripts/stedgeai_utils.py`는 ST Edge AI CLI 탐색 규칙을 설명합니다.

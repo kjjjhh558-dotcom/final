@@ -1,9 +1,7 @@
 # -*- coding: utf-8 -*-
-"""Export the full 56-feature 200 ms model as an isolated STM32 candidate.
+"""full56 Keras 모델을 TFLite와 ST Edge AI 후보 산출물로 내보냅니다.
 
-This does not modify the production mouthnose firmware. It only writes
-TFLite/ST Edge AI candidate files under full56_pipeline/stm32_candidate.
-"""
+production 펌웨어는 수정하지 않고 full56_pipeline/stm32_candidate 아래에 후보 모델, TFLite 평가 결과, ST Edge AI 생성 로그와 요약 JSON을 남깁니다."""
 
 from __future__ import annotations
 
@@ -39,6 +37,7 @@ REPORTS_DIR = OUT_DIR / "reports"
 
 
 def configure_stdio() -> None:
+    """후보 export 로그가 Windows 콘솔에서 UTF-8로 보이도록 설정합니다."""
     for stream in (sys.stdout, sys.stderr):
         try:
             stream.reconfigure(encoding="utf-8")
@@ -47,21 +46,25 @@ def configure_stdio() -> None:
 
 
 def read_json(path: Path) -> dict:
+    """metrics JSON을 UTF-8로 읽어 dict로 반환합니다."""
     with path.open(encoding="utf-8") as f:
         return json.load(f)
 
 
 def write_json(path: Path, payload: dict) -> None:
+    """후보 생성 요약 JSON을 보기 좋은 UTF-8 형식으로 저장합니다."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
 
 
 def timestamp() -> str:
+    """ST Edge AI 실행 폴더와 로그 이름에 사용할 현재 시각 문자열을 만듭니다."""
     return datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
 def export_tflite(tf, keras_model: Path, tflite_out: Path) -> None:
+    """Keras 모델을 로드해 float TFLite 모델 파일로 변환합니다."""
     if not keras_model.exists():
         raise FileNotFoundError(f"missing Keras model: {keras_model}")
     model = tf.keras.models.load_model(keras_model)
@@ -71,6 +74,7 @@ def export_tflite(tf, keras_model: Path, tflite_out: Path) -> None:
 
 
 def evaluate_tflite(tf, tflite_path: Path, features_csv: Path, feature_columns: list[str]) -> dict:
+    """생성된 TFLite를 테스트 feature CSV로 실행해 프레임 정확도와 예측 CSV를 만듭니다."""
     df = pd.read_csv(features_csv)
     test_df = df[df["split"] == "test"].copy()
     if test_df.empty:
@@ -113,6 +117,7 @@ def evaluate_tflite(tf, tflite_path: Path, features_csv: Path, feature_columns: 
 
 
 def copy_output_tree(source: Path, destination: Path) -> None:
+    """임시 ST Edge AI output 폴더를 후보 보관 폴더로 재귀 복사합니다."""
     if not source.exists():
         return
     destination.mkdir(parents=True, exist_ok=True)
@@ -125,6 +130,7 @@ def copy_output_tree(source: Path, destination: Path) -> None:
 
 
 def run_stedgeai(tflite_path: Path, network_name: str, direct_paths: bool = False) -> dict:
+    """TFLite 후보를 ST Edge AI CLI로 C 코드 생성하고 stdout/stderr와 manifest를 남깁니다."""
     run_id = timestamp()
     run_dir = STEDGEAI_RUNS_DIR / f"run_{run_id}"
     run_output_dir = run_dir / "stedgeai_output"
@@ -202,6 +208,7 @@ def run_stedgeai(tflite_path: Path, network_name: str, direct_paths: bool = Fals
 
 
 def main(argv: list[str] | None = None) -> int:
+    """TFLite 변환, TFLite 평가, 선택적 ST Edge AI 생성, 후보 요약 저장을 실행합니다."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--keras-model", type=Path, default=FULL56_MODEL)
     parser.add_argument("--features-csv", type=Path, default=FULL56_FEATURES)

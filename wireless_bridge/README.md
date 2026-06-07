@@ -1,6 +1,6 @@
 # BLE-UART 자세 정보 브리지
 
-최종 정리 시각: 2026-06-01 13:42 KST
+최종 정리 시각: 2026-06-08 00:03 KST
 
 이 폴더에는 자세 정보 전체 경로를 확인하는 Arduino 스케치가 있습니다.
 
@@ -52,3 +52,11 @@ python .\scripts\tools\check_nrf_ble_to_stm32_bridge.py --stm-port COM4 --esp-po
 ```
 
 이 명령은 두 USB COM 포트를 동시에 엽니다. 먼저 Arduino Serial Monitor를 닫으십시오. ESP32-S3 BLE notify/UART 송신 로그와 STM32 최종 `rx/valid` 카운터를 함께 확인합니다.
+
+## 스케치 내부 설명
+
+- `xiao_nrf52840_imu_ble_sender.ino`는 LSM6DS3 가속도값을 L/R/S/F/O 자세 토큰으로 분류하고 BLE notify로 보냅니다.
+- `esp32s3_ble_to_stm32_uart.ino`는 SmartPillow BLE notify를 받아 STM32 USART1로 유효 토큰만 중계합니다.
+- `esp32s3_uart_only_test.ino`는 BLE 없이 ESP32-S3 D6/TX -> STM32 PA10/RX1 배선만 검증합니다.
+
+각 `.ino` 파일 맨 위에 배선과 전체 흐름을 다시 적어두었으니 업로드 전 그 설명을 먼저 확인합니다.

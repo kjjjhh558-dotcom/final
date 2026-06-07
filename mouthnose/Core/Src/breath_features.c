@@ -1,4 +1,9 @@
-/* 파일 설명: MAX9814 PCM 프레임에 causal 필터를 적용하고, TinyML 모델 입력용 30개 특징을 C 코드에서 계산합니다. */
+/*
+ * 파일 설명:
+ *   STM32 펌웨어에서 PC 학습 파이프라인과 같은 호흡음 DSP 특징을 계산합니다.
+ *   현재 full56 빌드는 200 ms 프레임, 4096 FFT, static 17개 + MFCC 13개 + delta 13개 + delta-delta 13개를 사용합니다.
+ *   실시간 스트림에서는 causal SOS 필터와 MFCC history를 유지해 delta/delta-delta 계산에 필요한 지연을 관리합니다.
+ */
 
 #include "breath_features.h"
 
@@ -39,6 +44,7 @@ static uint8_t s_cmsis_rfft_ready = 0U;
 #define BREATH_DELTA_DENOMINATOR 10.0f
 
 /* Runtime tables for MFCC DCT are initialized once and reused. */
+/* 함수 설명: breath_init_runtime_tables는 호흡음 DSP feature 계산 중 한 단계를 수행합니다. */
 static void breath_init_runtime_tables(void)
 {
     if (s_runtime_tables_ready != 0U) {
@@ -75,6 +81,7 @@ static uint32_t breath_reverse_bits(uint32_t value, uint32_t bits)
     return reversed;
 }
 
+/* 함수 설명: breath_bin_freq는 호흡음 DSP feature 계산 중 한 단계를 수행합니다. */
 static float breath_bin_freq(size_t bin)
 {
     return ((float)bin * (float)BREATH_AI_SAMPLE_RATE) / (float)BREATH_AI_FFT_SIZE;
@@ -111,6 +118,7 @@ static float breath_zero_crossing_rate(const float frame[BREATH_AI_FRAME_SIZE])
     return (float)crossings / (float)(BREATH_AI_FRAME_SIZE - 1U);
 }
 
+/* 함수 설명: breath_filter_sample_i16는 호흡음 DSP feature 계산 중 한 단계를 수행합니다. */
 static float breath_filter_sample_i16(breath_feature_scratch_t *scratch, int16_t pcm)
 {
     float x = (float)pcm / 32768.0f;
@@ -135,6 +143,7 @@ static float breath_filter_sample_i16(breath_feature_scratch_t *scratch, int16_t
 }
 
 /* Convert a filtered frame into a power spectrum with an in-place radix-2 FFT. */
+/* 함수 설명: breath_compute_power_spectrum_internal는 호흡음 DSP feature 계산 중 한 단계를 수행합니다. */
 static void breath_compute_power_spectrum_internal(
     breath_feature_scratch_t *scratch,
     const float frame[BREATH_AI_FRAME_SIZE],
@@ -197,6 +206,7 @@ static void breath_compute_power_spectrum_internal(
 /* CMSIS-DSP RFFT backend. Output packing is:
  * out[0] = DC real, out[1] = Nyquist real, out[2*k] / out[2*k+1] = bin k.
  */
+/* 함수 설명: breath_compute_power_spectrum_cmsis는 호흡음 DSP feature 계산 중 한 단계를 수행합니다. */
 static void breath_compute_power_spectrum_cmsis(
     breath_feature_scratch_t *scratch,
     const float frame[BREATH_AI_FRAME_SIZE],
@@ -221,6 +231,7 @@ static void breath_compute_power_spectrum_cmsis(
 }
 #endif
 
+/* 함수 설명: breath_compute_power_spectrum는 호흡음 DSP feature 계산 중 한 단계를 수행합니다. */
 static void breath_compute_power_spectrum(
     breath_feature_scratch_t *scratch,
     const float frame[BREATH_AI_FRAME_SIZE],
@@ -438,6 +449,7 @@ breath_feature_status_t breath_features_extract_from_pcm_i16(
     return breath_features_extract_from_filtered_frame(scratch, scratch->filtered_frame, features);
 }
 
+/* 함수 설명: breath_history_index_from_oldest는 호흡음 DSP feature 계산 중 한 단계를 수행합니다. */
 static uint32_t breath_history_index_from_oldest(
     const breath_feature_scratch_t *scratch,
     uint32_t offset_from_oldest)
@@ -453,6 +465,7 @@ static uint32_t breath_history_index_from_oldest(
     return (oldest + offset_from_oldest) % BREATH_FEATURES_HISTORY_COUNT;
 }
 
+/* 함수 설명: breath_copy_filtered_ring_to_frame는 호흡음 DSP feature 계산 중 한 단계를 수행합니다. */
 static void breath_copy_filtered_ring_to_frame(breath_feature_scratch_t *scratch)
 {
     uint32_t start = 0U;
@@ -466,6 +479,7 @@ static void breath_copy_filtered_ring_to_frame(breath_feature_scratch_t *scratch
     }
 }
 
+/* 함수 설명: breath_push_feature_history는 호흡음 DSP feature 계산 중 한 단계를 수행합니다. */
 static void breath_push_feature_history(
     breath_feature_scratch_t *scratch,
     const float features[BREATH_AI_FEATURE_COUNT])
@@ -486,6 +500,7 @@ static void breath_push_feature_history(
     }
 }
 
+/* 함수 설명: breath_compute_delta_at_history_offset는 호흡음 DSP feature 계산 중 한 단계를 수행합니다. */
 static void breath_compute_delta_at_history_offset(
     const breath_feature_scratch_t *scratch,
     uint32_t center_offset,
@@ -504,6 +519,7 @@ static void breath_compute_delta_at_history_offset(
     }
 }
 
+/* 함수 설명: breath_build_full56_from_history는 호흡음 DSP feature 계산 중 한 단계를 수행합니다. */
 static void breath_build_full56_from_history(
     const breath_feature_scratch_t *scratch,
     float features[BREATH_AI_FEATURE_COUNT])
@@ -540,6 +556,7 @@ static void breath_build_full56_from_history(
     }
 }
 
+/* 함수 설명: breath_features_process_pcm_i16_stream는 STM32 DSP feature extractor의 public 처리 단계입니다. */
 breath_feature_status_t breath_features_process_pcm_i16_stream(
     breath_feature_scratch_t *scratch,
     const int16_t *pcm,

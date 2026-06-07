@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
-"""Monitor STM32 USART1 IMU bridge telemetry over the USB CDC COM port."""
+"""STM32 USB CDC에서 IMU UART 브리지 텔레메트리만 읽어 배선과 토큰 수신을 확인합니다.
+
+ESP32-S3 TX가 STM32 PA10/RX1로 들어오는지, STM32가 L/R/N/S/F/O/A 자세 토큰을 유효하게 파싱하는지 빠르게 확인할 때 사용합니다."""
 
 from __future__ import annotations
 
@@ -31,6 +33,7 @@ STATE_NAMES = {
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
+    """STM32 COM 포트, 모니터링 시간, 카운터 reset 여부를 CLI로 받습니다."""
     parser = argparse.ArgumentParser(
         description=(
             "Enable STM32 IMU bridge telemetry and print USART1 RX/state counters. "
@@ -47,10 +50,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 
 def state_name(value: int) -> str:
+    """텔레메트리 숫자 상태값을 사람이 읽는 자세 이름으로 바꿉니다."""
     return STATE_NAMES.get(value, f"STATE_{value}")
 
 
 def byte_repr(value: int) -> str:
+    """마지막 수신 바이트를 ASCII 문자 또는 hex 값으로 표시합니다."""
     if value == 0:
         return "none"
     if 32 <= value <= 126:
@@ -59,6 +64,7 @@ def byte_repr(value: int) -> str:
 
 
 def unpack_packet(packet: bytes) -> dict[str, int]:
+    """STM32 IMU 텔레메트리 binary packet을 필드 dict로 해석합니다."""
     fields = struct.unpack(IMU_PACKET_FMT, packet)
     keys = (
         "magic",
@@ -82,6 +88,7 @@ def unpack_packet(packet: bytes) -> dict[str, int]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """IMU 텔레메트리를 켜고 패킷을 읽어 RX/valid/state/output 카운터를 출력합니다."""
     args = parse_args(sys.argv[1:] if argv is None else argv)
 
     if serial is None:

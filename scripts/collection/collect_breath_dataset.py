@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+"""STM32 USB CDC 오디오 스트림을 받아 호흡 데이터셋 WAV와 metadata.csv를 생성합니다.
+
+처음 넘겨받는 사람은 이 파일에서 수집 프로토콜, 실시간 청취, 패킷 누락 감지, train/test 분할, 세션 폴더 생성 흐름을 확인하면 됩니다. 보드가 보내는 0xAABBCCDD 오디오 패킷을 읽고, 선택한 호흡 동작 순서대로 WAV 클립과 메타데이터를 남깁니다."""
+
 # 파일 설명: STM32 USB CDC 오디오를 수집해 통합 dataset WAV와 metadata만 만듭니다.
 #
 # collect_breath_dataset.py
@@ -124,6 +128,7 @@ except ImportError:
 
 # 클래스 설명: 'DependencyError' 예외 상황을 표현하는 전용 오류 타입입니다.
 class DependencyError(RuntimeError):
+    """DependencyError는 선택 의존성이 없을 때 사용자에게 설치 안내를 주기 위한 전용 예외입니다."""
     pass
 
 
@@ -166,6 +171,7 @@ DATASET_LABELS = (
 # 클래스 설명: 'AudioPacket' 관련 데이터를 묶고 전달하거나 상태를 관리하는 구조입니다.
 @dataclass(frozen=True)
 class AudioPacket:
+    """AudioPacket는 펌웨어나 센서에서 받은 한 개 패킷의 필드를 묶어 전달하는 데이터 구조입니다."""
     seq: int
     samples: int
     adc: np.ndarray
@@ -175,6 +181,7 @@ class AudioPacket:
 # 클래스 설명: 'ProtocolPhase' 동작에 필요한 상태와 메서드를 묶는 클래스입니다.
 @dataclass(frozen=True)
 class ProtocolPhase:
+    """ProtocolPhase는 이 모듈에서 관련 데이터와 동작을 묶어 관리하는 구성 요소입니다."""
     start_sec: float
     end_sec: float
     label: str
@@ -186,12 +193,14 @@ class ProtocolPhase:
     # 함수 설명: 'duration_sec' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
     @property
     def duration_sec(self) -> float:
+        """ProtocolPhase.duration_sec는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
         return self.end_sec - self.start_sec
 
 
 # 클래스 설명: 'ClipSpec' 관련 데이터를 묶고 전달하거나 상태를 관리하는 구조입니다.
 @dataclass(frozen=True)
 class ClipSpec:
+    """ClipSpec는 이 모듈에서 관련 데이터와 동작을 묶어 관리하는 구성 요소입니다."""
     filename: str
     label: str
     split: str
@@ -203,12 +212,14 @@ class ClipSpec:
     # 함수 설명: 'expected_samples' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
     @property
     def expected_samples(self) -> int:
+        """ClipSpec.expected_samples는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
         return self.end_sample - self.start_sample
 
 
 # 클래스 설명: 'StreamStats' 관련 데이터를 묶고 전달하거나 상태를 관리하는 구조입니다.
 @dataclass
 class StreamStats:
+    """StreamStats는 실시간 처리 중 누적되는 상태값과 통계를 보관합니다."""
     total_packets: int = 0
     dropped_packets: int = 0
     resync_events: int = 0
@@ -228,7 +239,7 @@ class StreamStats:
 
 # 함수 설명: 실행 환경이나 출력 형식을 현재 작업에 맞게 설정합니다.
 def configure_utf8_stdio() -> None:
-    """Make Korean console prompts render correctly in VS Code terminals."""
+    """실행 환경, 출력 인코딩, 라이브러리 옵션처럼 본 처리 전에 필요한 설정을 적용합니다."""
     for stream in (sys.stdout, sys.stderr):
         try:
             stream.reconfigure(encoding="utf-8")
@@ -237,10 +248,12 @@ def configure_utf8_stdio() -> None:
 
 
 def console_hotkeys_available() -> bool:
+    """현재 값이나 실행 환경이 조건을 만족하는지 boolean으로 판정합니다."""
     return os.name == "nt" and msvcrt is not None
 
 
 def poll_console_key() -> str | None:
+    """poll_console_key는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
     if not console_hotkeys_available():
         return None
 
@@ -256,6 +269,7 @@ def poll_console_key() -> str | None:
 
 
 def clear_console_keys() -> None:
+    """clear_console_keys는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
     if not console_hotkeys_available():
         return
 
@@ -267,6 +281,7 @@ def clear_console_keys() -> None:
 
 # 함수 설명: 파일, 시리얼, 모델, 설정 등 외부 입력을 읽어 메모리에 올립니다.
 def read_exact(ser: serial.Serial, size: int, timeout_sec: float = 2.0) -> bytes:
+    """시리얼 포트에서 지정한 byte 수가 모일 때까지 읽고 timeout 시 오류를 냅니다."""
     data = bytearray()
     deadline = time.monotonic() + timeout_sec
 
@@ -286,12 +301,15 @@ def read_exact(ser: serial.Serial, size: int, timeout_sec: float = 2.0) -> bytes
 # 클래스 설명: 'AudioPacketReceiver' 관련 데이터를 묶고 전달하거나 상태를 관리하는 구조입니다.
 class AudioPacketReceiver:
     # 함수 설명: '__init__' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
+    """AudioPacketReceiver는 시리얼 byte stream에서 필요한 packet을 동기화하고 파싱합니다."""
     def __init__(self, ser: serial.Serial, max_packet_samples: int = 4096) -> None:
+        """AudioPacketReceiver 인스턴스가 사용할 버퍼, 파일 핸들, 장치 상태를 초기화합니다."""
         self.ser = ser
         self.max_packet_samples = max_packet_samples
 
     # 함수 설명: 입력 스트림이나 목록에서 필요한 위치와 대상을 찾아 동기화합니다.
     def find_magic(self) -> None:
+        """시리얼 stream에서 packet 시작을 나타내는 magic word까지 byte를 버리며 동기화합니다."""
         sync = bytearray()
 
         while True:
@@ -308,6 +326,7 @@ class AudioPacketReceiver:
 
     # 함수 설명: 파일, 시리얼, 모델, 설정 등 외부 입력을 읽어 메모리에 올립니다.
     def read_packet(self) -> AudioPacket:
+        """동기화된 시리얼 stream에서 header와 payload를 읽어 packet 객체로 변환합니다."""
         while True:
             self.find_magic()
             rest = read_exact(self.ser, HEADER_SIZE - 4)
@@ -331,7 +350,9 @@ class AudioPacketReceiver:
 # 클래스 설명: 'WavPcmWriter' 관련 데이터를 묶고 전달하거나 상태를 관리하는 구조입니다.
 class WavPcmWriter:
     # 함수 설명: '__init__' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
+    """WavPcmWriter는 수집 또는 모니터링 결과를 파일로 안전하게 기록합니다."""
     def __init__(self, path: str, sample_rate: int) -> None:
+        """WavPcmWriter 인스턴스가 사용할 버퍼, 파일 핸들, 장치 상태를 초기화합니다."""
         self.path = path
         self.sample_rate = sample_rate
         self.frames_written = 0
@@ -342,6 +363,7 @@ class WavPcmWriter:
 
     # 함수 설명: 계산된 결과나 데이터를 파일 또는 출력 장치에 저장합니다.
     def write_pcm_i16(self, pcm: np.ndarray) -> None:
+        """계산된 결과나 설정 값을 CSV, JSON, WAV, C 헤더 같은 출력 파일로 저장합니다."""
         if pcm.size == 0:
             return
         pcm_i16 = pcm.astype("<i2", copy=False)
@@ -350,11 +372,13 @@ class WavPcmWriter:
 
     # 함수 설명: 'close' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
     def close(self) -> None:
+        """열어 둔 파일, 오디오 장치, 스레드 등 외부 자원을 정리합니다."""
         self._wav.close()
 
 
 # 클래스 설명: 'SegmentedDatasetWriter' 관련 데이터를 묶고 전달하거나 상태를 관리하는 구조입니다.
 class WaveFormatEx(ctypes.Structure):
+    """WaveFormatEx는 Windows winmm 오디오 API 호출에 필요한 C 구조체 정의입니다."""
     _fields_ = [
         ("wFormatTag", ctypes.c_ushort),
         ("nChannels", ctypes.c_ushort),
@@ -367,6 +391,7 @@ class WaveFormatEx(ctypes.Structure):
 
 
 class WaveHdr(ctypes.Structure):
+    """WaveHdr는 Windows winmm 오디오 API 호출에 필요한 C 구조체 정의입니다."""
     _fields_ = [
         ("lpData", ctypes.c_void_p),
         ("dwBufferLength", ctypes.c_uint),
@@ -380,12 +405,14 @@ class WaveHdr(ctypes.Structure):
 
 
 class LivePcmPlayer:
+    """LivePcmPlayer는 수신한 PCM 오디오를 PC에서 실시간 재생하기 위한 보조 구성 요소입니다."""
     CALLBACK_NULL = 0
     WAVE_FORMAT_PCM = 1
     WAVE_MAPPER = ctypes.c_uint(-1).value
     WHDR_DONE = 0x00000001
 
     def __init__(self, sample_rate: int, queue_sec: float = 0.75, gain: float = 1.0) -> None:
+        """LivePcmPlayer 인스턴스가 사용할 버퍼, 파일 핸들, 장치 상태를 초기화합니다."""
         if os.name != "nt":
             raise RuntimeError("--play-audio currently supports Windows only")
         if sample_rate <= 0:
@@ -409,6 +436,7 @@ class LivePcmPlayer:
         self._thread.start()
 
     def _configure_winmm(self) -> None:
+        """LivePcmPlayer._configure_winmm는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
         self._winmm.waveOutOpen.argtypes = [
             ctypes.POINTER(ctypes.c_void_p),
             ctypes.c_uint,
@@ -430,10 +458,12 @@ class LivePcmPlayer:
         self._winmm.waveOutClose.restype = ctypes.c_uint
 
     def _raise_if_error(self, code: int, action: str) -> None:
+        """LivePcmPlayer._raise_if_error는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
         if int(code) != 0:
             raise RuntimeError(f"winmm {action} failed with code {code}")
 
     def _open_device(self) -> None:
+        """LivePcmPlayer._open_device는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
         fmt = WaveFormatEx(self.WAVE_FORMAT_PCM, 1, self.sample_rate, self.sample_rate * 2, 2, 16, 0)
         code = self._winmm.waveOutOpen(
             ctypes.byref(self._handle),
@@ -446,6 +476,7 @@ class LivePcmPlayer:
         self._raise_if_error(code, "waveOutOpen")
 
     def write(self, pcm: np.ndarray) -> None:
+        """LivePcmPlayer.write는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
         if self._closed or pcm.size == 0:
             return
         if self.gain == 1.0:
@@ -468,6 +499,7 @@ class LivePcmPlayer:
                 self.dropped_buffers += 1
 
     def _cleanup_done(self, pending: list[tuple[WaveHdr, ctypes.Array]]) -> list[tuple[WaveHdr, ctypes.Array]]:
+        """완료된 작업 항목을 정리하고 아직 처리 중인 항목만 남깁니다."""
         active: list[tuple[WaveHdr, ctypes.Array]] = []
         for header, buffer in pending:
             if header.dwFlags & self.WHDR_DONE:
@@ -477,6 +509,7 @@ class LivePcmPlayer:
         return active
 
     def _worker(self) -> None:
+        """백그라운드 스레드에서 queue를 소비하며 장치 I/O 작업을 처리합니다."""
         pending: list[tuple[WaveHdr, ctypes.Array]] = []
         try:
             while True:
@@ -506,6 +539,7 @@ class LivePcmPlayer:
                 self._winmm.waveOutUnprepareHeader(self._handle, ctypes.byref(header), ctypes.sizeof(header))
 
     def close(self) -> None:
+        """열어 둔 파일, 오디오 장치, 스레드 등 외부 자원을 정리합니다."""
         if self._closed:
             return
         self._closed = True
@@ -524,6 +558,7 @@ class LivePcmPlayer:
 
 class SegmentedDatasetWriter:
     # 함수 설명: '__init__' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
+    """SegmentedDatasetWriter는 수집 또는 모니터링 결과를 파일로 안전하게 기록합니다."""
     def __init__(
         self,
         clips: list[ClipSpec],
@@ -536,6 +571,7 @@ class SegmentedDatasetWriter:
         protocol: str,
         dataset_dir: str,
     ) -> None:
+        """SegmentedDatasetWriter 인스턴스가 사용할 버퍼, 파일 핸들, 장치 상태를 초기화합니다."""
         self.clips = clips
         self.sample_rate = sample_rate
         self.adc_center = adc_center
@@ -553,6 +589,7 @@ class SegmentedDatasetWriter:
 
     # 함수 설명: 계산된 결과나 데이터를 파일 또는 출력 장치에 저장합니다.
     def write_block(self, block_start_sample: int, pcm: np.ndarray) -> None:
+        """계산된 결과나 설정 값을 CSV, JSON, WAV, C 헤더 같은 출력 파일로 저장합니다."""
         if pcm.size == 0:
             return
 
@@ -592,10 +629,11 @@ class SegmentedDatasetWriter:
 
     # 함수 설명: 'close' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
     def close(self) -> None:
+        """열어 둔 파일, 오디오 장치, 스레드 등 외부 자원을 정리합니다."""
         self._finalize_open_clip(complete=False)
 
     def discard_from_sample(self, restart_sample: int) -> list[str]:
-        """Discard open/completed dataset clips at or after a timeline sample."""
+        """SegmentedDatasetWriter.discard_from_sample는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
         restart_sample = max(0, int(restart_sample))
         discarded_paths: set[str] = set()
 
@@ -654,6 +692,7 @@ class SegmentedDatasetWriter:
 
     # 함수 설명: '_ensure_current_writer' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
     def _ensure_current_writer(self, clip: ClipSpec) -> None:
+        """SegmentedDatasetWriter._ensure_current_writer는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
         if self.current_writer is None:
             os.makedirs(os.path.dirname(clip.path), exist_ok=True)
             self.current_writer = WavPcmWriter(clip.path, self.sample_rate)
@@ -661,6 +700,7 @@ class SegmentedDatasetWriter:
 
     # 함수 설명: '_finalize_open_clip' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
     def _finalize_open_clip(self, complete: bool) -> None:
+        """SegmentedDatasetWriter._finalize_open_clip는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
         if self.current_writer is None:
             return
 
@@ -705,6 +745,7 @@ class SegmentedDatasetWriter:
 
 # 함수 설명: 'adc_to_pcm_i16' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
 def adc_to_pcm_i16(adc: np.ndarray, adc_center: int, gain: float) -> np.ndarray:
+    """보드에서 온 ADC/PCM sample을 표시, 저장, 재생에 맞는 PCM/float 형식으로 변환합니다."""
     centered = adc.astype(np.int32) - int(adc_center)
     pcm = np.rint(centered * float(gain))
     pcm = np.clip(pcm, -32768, 32767)
@@ -712,6 +753,7 @@ def adc_to_pcm_i16(adc: np.ndarray, adc_center: int, gain: float) -> np.ndarray:
 
 
 def resolve_packet_sample_format(packet: AudioPacket, requested: str) -> int:
+    """내부 상태값을 콘솔이나 그래프에 표시하기 좋은 문자열 또는 라벨로 변환합니다."""
     if requested == "pcm16":
         return AUDIO_FORMAT_PCM16
     if requested == "adc_u16":
@@ -720,6 +762,7 @@ def resolve_packet_sample_format(packet: AudioPacket, requested: str) -> int:
 
 
 def apply_pcm16_gain(pcm: np.ndarray, gain: float) -> np.ndarray:
+    """보드에서 온 ADC/PCM sample을 표시, 저장, 재생에 맞는 PCM/float 형식으로 변환합니다."""
     if float(gain) == 1.0:
         return pcm.astype("<i2", copy=True)
     scaled = np.rint(pcm.astype(np.float32) * float(gain))
@@ -734,6 +777,7 @@ def packet_to_pcm_i16(
     gain: float,
     pcm16_gain: float,
 ) -> np.ndarray:
+    """보드에서 온 ADC/PCM sample을 표시, 저장, 재생에 맞는 PCM/float 형식으로 변환합니다."""
     sample_format = resolve_packet_sample_format(packet, requested)
     if sample_format == AUDIO_FORMAT_PCM16:
         return apply_pcm16_gain(packet.adc.view("<i2"), pcm16_gain)
@@ -741,6 +785,7 @@ def packet_to_pcm_i16(
 
 
 def effective_adc_center_and_gain(args: argparse.Namespace) -> tuple[int, float]:
+    """effective_adc_center_and_gain는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
     if args.sample_format == "pcm16":
         return 0, args.pcm16_gain
     return args.adc_center, args.pcm_gain
@@ -748,6 +793,7 @@ def effective_adc_center_and_gain(args: argparse.Namespace) -> tuple[int, float]
 
 # 함수 설명: 프로토콜별 실제 반복 횟수를 계산합니다. 코/입 단독 수집은 데이터 확보량을 늘리기 위해 2배로 진행합니다.
 def effective_protocol_repeats(protocol: str, repeats: int) -> int:
+    """effective_protocol_repeats는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
     if protocol in ("nasal", "mouth"):
         return repeats * SINGLE_CLASS_PROTOCOL_REPEAT_MULTIPLIER
     return repeats
@@ -761,6 +807,7 @@ def build_protocol(
     protocol: str = DEFAULT_PROTOCOL,
     noise_sec: float = DEFAULT_NOISE_SEC,
 ) -> list[ProtocolPhase]:
+    """입력 설정을 조합해 프로토콜, 모델, feature, 표시 요소 같은 후속 처리 객체를 만듭니다."""
     phases: list[ProtocolPhase] = []
     t = 0.0
 
@@ -773,6 +820,7 @@ def build_protocol(
         trim_edges: bool = False,
         save_clip: bool = True,
     ) -> None:
+        """build_protocol.add는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
         nonlocal t
         phases.append(
             ProtocolPhase(
@@ -834,6 +882,7 @@ def make_metadata_row(
     sample_format: str,
     pcm16_gain: float,
 ) -> dict[str, str]:
+    """make_metadata_row는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
     start_sec = start_sample / sample_rate
     end_sec = end_sample / sample_rate
     duration_sec = max(0.0, end_sec - start_sec)
@@ -865,6 +914,7 @@ def build_clip_specs(
     edge_trim_sec: float,
     initial_counters: dict[str, int] | None = None,
 ) -> list[ClipSpec]:
+    """입력 설정을 조합해 프로토콜, 모델, feature, 표시 요소 같은 후속 처리 객체를 만듭니다."""
     counters = {label: 0 for label in DATASET_LABELS}
     if initial_counters is not None:
         for label in DATASET_LABELS:
@@ -907,6 +957,7 @@ def build_clip_specs(
 
 # 함수 설명: 'split_for_ordinal' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
 def split_for_ordinal(ordinal: int) -> str:
+    """split_for_ordinal는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
     if ordinal <= 0:
         return "train"
     return "test" if ordinal % TEST_EVERY_N == 0 else "train"
@@ -914,6 +965,7 @@ def split_for_ordinal(ordinal: int) -> str:
 
 # 함수 설명: frame/file 단위 결과를 묶어 요약 통계를 계산합니다.
 def summarize_clip_durations(clips: list[ClipSpec], sample_rate: int) -> dict[str, float]:
+    """summarize_clip_durations는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
     durations = {label: 0.0 for label in DATASET_LABELS}
     for clip in clips:
         durations[clip.label] += clip.expected_samples / sample_rate
@@ -922,6 +974,7 @@ def summarize_clip_durations(clips: list[ClipSpec], sample_rate: int) -> dict[st
 
 # 함수 설명: frame/file 단위 결과를 묶어 요약 통계를 계산합니다.
 def summarize_clip_split_counts(clips: list[ClipSpec]) -> dict[str, int]:
+    """summarize_clip_split_counts는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
     counts = {split: 0 for split in SPLITS}
     for clip in clips:
         counts[clip.split] += 1
@@ -930,6 +983,7 @@ def summarize_clip_split_counts(clips: list[ClipSpec]) -> dict[str, int]:
 
 # 함수 설명: 사용자에게 보여줄 텍스트나 요약 정보를 생성해 출력합니다.
 def describe_protocol(args: argparse.Namespace) -> str:
+    """describe_protocol는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
     if args.protocol == "noise":
         return f"{args.repeats}x {args.noise_sec:g}s noise"
 
@@ -945,6 +999,7 @@ def describe_protocol(args: argparse.Namespace) -> str:
 
 # 함수 설명: 계산된 결과나 데이터를 파일 또는 출력 장치에 저장합니다.
 def write_metadata_csv(path: str, rows: list[dict[str, str]], append: bool = True) -> None:
+    """계산된 결과나 설정 값을 CSV, JSON, WAV, C 헤더 같은 출력 파일로 저장합니다."""
     if not rows:
         return
 
@@ -1000,6 +1055,7 @@ def write_metadata_csv(path: str, rows: list[dict[str, str]], append: bool = Tru
 
 # 함수 설명: 'current_phase' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
 def current_phase(phases: list[ProtocolPhase], audio_sec: float) -> tuple[int, ProtocolPhase]:
+    """current_phase는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
     for i, phase in enumerate(phases):
         if phase.start_sec <= audio_sec < phase.end_sec:
             return i, phase
@@ -1008,6 +1064,7 @@ def current_phase(phases: list[ProtocolPhase], audio_sec: float) -> tuple[int, P
 
 # 함수 설명: 'seq_forward_gap' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
 def seq_forward_gap(expected_seq: int, actual_seq: int) -> int:
+    """seq_forward_gap는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
     return (actual_seq - expected_seq) % UINT32_MOD
 
 
@@ -1020,6 +1077,7 @@ def estimate_missing_samples(
     short_packet_samples: int,
     short_packet_mod: int | None,
 ) -> int:
+    """패킷 seq 차이를 기반으로 누락된 샘플 수나 상태를 추정합니다."""
     if missing_packets <= 0:
         return 0
 
@@ -1038,6 +1096,7 @@ def estimate_missing_samples(
 
 # 함수 설명: 시각화 화면이나 그래프 상태를 새 데이터에 맞게 갱신합니다.
 def update_amplitude_window(stats: StreamStats, samples: np.ndarray, adc_center: int, sample_format: int) -> None:
+    """새로 들어온 데이터에 맞춰 상태, 통계, 그래프 표시를 갱신합니다."""
     if samples.size == 0:
         return
 
@@ -1057,6 +1116,7 @@ def update_amplitude_window(stats: StreamStats, samples: np.ndarray, adc_center:
 
 # 함수 설명: 'reset_debug_window' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
 def reset_debug_window(stats: StreamStats) -> None:
+    """누적 상태나 디버그 window를 초기 상태로 되돌립니다."""
     stats.window_packets = 0
     stats.window_min = None
     stats.window_max = None
@@ -1066,6 +1126,7 @@ def reset_debug_window(stats: StreamStats) -> None:
 
 # 함수 설명: 사용자에게 보여줄 텍스트나 요약 정보를 생성해 출력합니다.
 def print_phase_banner(index: int, total: int, phase: ProtocolPhase, repeats: int) -> None:
+    """현재 처리 상태를 사용자가 확인하기 쉬운 콘솔 메시지로 출력합니다."""
     repeat_text = f" ({phase.repeat}/{repeats})" if phase.repeat > 0 else ""
     print()
     print(f"[STEP {index + 1:02d}/{total:02d}] {phase.label}{repeat_text}")
@@ -1080,6 +1141,7 @@ def print_debug_line(
     total_samples: int,
     now: float,
 ) -> None:
+    """현재 처리 상태를 사용자가 확인하기 쉬운 콘솔 메시지로 출력합니다."""
     elapsed = max(now - stats.last_debug_time, 1e-6)
     pps = stats.window_packets / elapsed
     audio_sec = stats.written_samples / sample_rate
@@ -1107,6 +1169,7 @@ def print_debug_line(
 
 # 함수 설명: 파일 시스템이나 장치 목록을 훑어 필요한 항목을 수집합니다.
 def scan_existing_clip_counters(dataset_dir: str) -> dict[str, int]:
+    """기존 데이터셋 폴더를 훑어 다음 파일 번호나 split 통계를 계산합니다."""
     counters = {label: 0 for label in DATASET_LABELS}
 
     if not os.path.isdir(dataset_dir):
@@ -1135,6 +1198,7 @@ def scan_existing_clip_counters(dataset_dir: str) -> dict[str, int]:
 
 # 함수 설명: 파일 시스템이나 장치 목록을 훑어 필요한 항목을 수집합니다.
 def scan_existing_split_counts(session_dir: str) -> dict[str, dict[str, int]]:
+    """기존 데이터셋 폴더를 훑어 다음 파일 번호나 split 통계를 계산합니다."""
     counts = {split: {label: 0 for label in DATASET_LABELS} for split in SPLITS}
 
     for split in SPLITS:
@@ -1156,6 +1220,7 @@ def scan_existing_split_counts(session_dir: str) -> dict[str, dict[str, int]]:
 
 # 함수 설명: 'next_full_session_wav_path' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
 def next_full_session_wav_path(session_dir: str, session_name: str) -> str:
+    """next_full_session_wav_path는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
     base_path = os.path.join(session_dir, f"{session_name}_full.wav")
     if not os.path.exists(base_path):
         return base_path
@@ -1170,6 +1235,7 @@ def next_full_session_wav_path(session_dir: str, session_name: str) -> str:
 
 # 함수 설명: 후속 단계에서 사용할 객체, 배열, 경로, 설정 구조를 구성합니다.
 def prepare_dataset_dir(out_dir: str) -> tuple[str, str, dict[str, int], bool]:
+    """수집이나 추론에 들어가기 전 경로, 버퍼, 입력 프레임을 필요한 형태로 준비합니다."""
     dataset_dir = out_dir
     metadata_path = os.path.join(dataset_dir, "metadata.csv")
     existed = os.path.exists(dataset_dir)
@@ -1190,6 +1256,7 @@ def prepare_dataset_dir(out_dir: str) -> tuple[str, str, dict[str, int], bool]:
 
 # 함수 설명: 보드나 출력 장치로 제어 명령 또는 데이터 패킷을 전송합니다.
 def send_board_ai_inference_command(ser: serial.Serial, mode: str) -> None:
+    """STM32나 보조 보드로 한 줄 제어 명령을 보내고 전송 버퍼를 비웁니다."""
     if mode == "keep":
         return
 
@@ -1202,6 +1269,7 @@ def send_board_ai_inference_command(ser: serial.Serial, mode: str) -> None:
 
 # 함수 설명: 'collect_dataset' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
 def collect_dataset(args: argparse.Namespace) -> int:
+    """사용자가 선택한 모드의 실제 수집, 테스트, 모니터링 루프를 실행합니다."""
     if serial is None:
         raise DependencyError("pyserial is not installed. Install it with: pip install pyserial")
 
@@ -1351,6 +1419,7 @@ def collect_dataset(args: argparse.Namespace) -> int:
         raw_for_debug: np.ndarray | None = None,
         sample_format_for_debug: int = AUDIO_FORMAT_ADC_U16,
     ) -> None:
+        """계산된 결과나 설정 값을 CSV, JSON, WAV, C 헤더 같은 출력 파일로 저장합니다."""
         nonlocal active_phase_index
 
         if pcm.size == 0:
@@ -1382,6 +1451,7 @@ def collect_dataset(args: argparse.Namespace) -> int:
             stats.last_debug_time = now
 
     def warmup_input_stream() -> None:
+        """collect_dataset.warmup_input_stream는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
         if args.warmup_sec <= 0:
             return
 
@@ -1426,6 +1496,7 @@ def collect_dataset(args: argparse.Namespace) -> int:
         ser.reset_input_buffer()
 
     def pause_key_pressed() -> bool:
+        """collect_dataset.pause_key_pressed는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
         if not args.pause_key or not console_hotkeys_available():
             return False
 
@@ -1433,6 +1504,7 @@ def collect_dataset(args: argparse.Namespace) -> int:
         return key is not None and key.lower() == args.pause_key
 
     def wait_resume_enter() -> None:
+        """collect_dataset.wait_resume_enter는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
         clear_console_keys()
         if console_hotkeys_available():
             while True:
@@ -1451,6 +1523,7 @@ def collect_dataset(args: argparse.Namespace) -> int:
         ser.reset_input_buffer()
 
     def pause_and_retry_current_step() -> None:
+        """collect_dataset.pause_and_retry_current_step는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
         nonlocal active_phase_index
 
         audio_sec = min(stats.written_samples / args.sample_rate, total_duration_sec - 1.0e-6)
@@ -1604,6 +1677,7 @@ def collect_dataset(args: argparse.Namespace) -> int:
 
 # 함수 설명: 명령행 옵션을 정의하고 사용자가 입력한 인자를 파싱합니다.
 def parse_args(argv: list[str]) -> argparse.Namespace:
+    """명령행에서 받을 옵션과 기본값을 정의하고 argparse 객체로 반환합니다."""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     parser = argparse.ArgumentParser(
@@ -1728,6 +1802,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 # 함수 설명: 스크립트 진입점으로 인자를 읽고 전체 실행 흐름을 호출합니다.
 def main(argv: list[str] | None = None) -> int:
+    """스크립트 진입점으로 CLI 인자를 읽고 전체 실행 흐름을 순서대로 호출합니다."""
     configure_utf8_stdio()
     args = parse_args(sys.argv[1:] if argv is None else argv)
 

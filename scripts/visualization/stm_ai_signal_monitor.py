@@ -1,12 +1,8 @@
 # -*- coding: utf-8 -*-
 # 파일 설명: STM32 내부 tiny MLP 예측 패킷과 raw 오디오 파형을 실시간으로 표시합니다.
-r"""Realtime monitor for STM32 audio packets and on-board AI predictions.
+"""STM32 보드 내부 AI 예측 패킷과 오디오 파형을 동시에 모니터링합니다.
 
-Usage:
-    python .\scripts\visualization\stm_ai_signal_monitor.py COM4 --sample-format pcm16
-    python .\scripts\visualization\stm_ai_signal_monitor.py COM4 --sample-format pcm16 --print-ai
-    python .\scripts\visualization\stm_ai_signal_monitor.py COM4 --sample-format pcm16 --no-plot --duration 8 --print-ai
-"""
+보드에서 나오는 오디오 패킷과 0xA15A1EAF AI 패킷을 같은 시리얼 스트림에서 분리해 파형, 라벨, 확률, 처리 시간, 입력 블록 수를 보여줍니다."""
 
 from __future__ import annotations
 
@@ -95,6 +91,7 @@ ANSI_RED = "\033[31m"
 # 클래스 설명: 'AudioPacket' 관련 데이터를 묶고 전달하거나 상태를 관리하는 구조입니다.
 @dataclass(frozen=True)
 class AudioPacket:
+    """AudioPacket는 펌웨어나 센서에서 받은 한 개 패킷의 필드를 묶어 전달하는 데이터 구조입니다."""
     seq: int
     adc: np.ndarray
     sample_format: int = AUDIO_FORMAT_ADC_U16
@@ -103,6 +100,7 @@ class AudioPacket:
 # 클래스 설명: 'AiPacket' 관련 데이터를 묶고 전달하거나 상태를 관리하는 구조입니다.
 @dataclass(frozen=True)
 class AiPacket:
+    """AiPacket는 펌웨어나 센서에서 받은 한 개 패킷의 필드를 묶어 전달하는 데이터 구조입니다."""
     seq: int
     audio_seq: int
     predicted: int
@@ -115,7 +113,9 @@ class AiPacket:
 # 클래스 설명: 'RollingBuffer' 관련 데이터를 묶고 전달하거나 상태를 관리하는 구조입니다.
 class RollingBuffer:
     # 함수 설명: '__init__' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
+    """RollingBuffer는 이 모듈에서 관련 데이터와 동작을 묶어 관리하는 구성 요소입니다."""
     def __init__(self, sample_rate: int, window_sec: float) -> None:
+        """RollingBuffer 인스턴스가 사용할 버퍼, 파일 핸들, 장치 상태를 초기화합니다."""
         self.max_samples = max(1, int(round(sample_rate * window_sec)))
         self.samples = np.zeros(self.max_samples, dtype=np.float32)
         self.write_index = 0
@@ -123,6 +123,7 @@ class RollingBuffer:
 
     # 함수 설명: 'append' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
     def append(self, values: np.ndarray) -> None:
+        """RollingBuffer.append는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
         if values.size == 0:
             return
 
@@ -146,6 +147,7 @@ class RollingBuffer:
 
     # 함수 설명: 'ordered' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
     def ordered(self, max_points: int = 0) -> tuple[np.ndarray, int]:
+        """RollingBuffer.ordered는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
         if self.total_samples < self.max_samples:
             values = self.samples[: self.total_samples]
         else:
@@ -160,6 +162,7 @@ class RollingBuffer:
 
 
 class WaveFormatEx(ctypes.Structure):
+    """WaveFormatEx는 Windows winmm 오디오 API 호출에 필요한 C 구조체 정의입니다."""
     _fields_ = [
         ("wFormatTag", ctypes.c_ushort),
         ("nChannels", ctypes.c_ushort),
@@ -172,6 +175,7 @@ class WaveFormatEx(ctypes.Structure):
 
 
 class WaveHdr(ctypes.Structure):
+    """WaveHdr는 Windows winmm 오디오 API 호출에 필요한 C 구조체 정의입니다."""
     _fields_ = [
         ("lpData", ctypes.c_void_p),
         ("dwBufferLength", ctypes.c_uint),
@@ -185,12 +189,14 @@ class WaveHdr(ctypes.Structure):
 
 
 class LivePcmPlayer:
+    """LivePcmPlayer는 수신한 PCM 오디오를 PC에서 실시간 재생하기 위한 보조 구성 요소입니다."""
     CALLBACK_NULL = 0
     WAVE_FORMAT_PCM = 1
     WAVE_MAPPER = ctypes.c_uint(-1).value
     WHDR_DONE = 0x00000001
 
     def __init__(self, sample_rate: int, queue_sec: float = DEFAULT_PLAYBACK_QUEUE_SEC, gain: float = 1.0) -> None:
+        """LivePcmPlayer 인스턴스가 사용할 버퍼, 파일 핸들, 장치 상태를 초기화합니다."""
         if os.name != "nt":
             raise RuntimeError("--play-audio currently supports Windows only")
         if sample_rate <= 0:
@@ -214,6 +220,7 @@ class LivePcmPlayer:
         self._thread.start()
 
     def _configure_winmm(self) -> None:
+        """LivePcmPlayer._configure_winmm는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
         self._winmm.waveOutOpen.argtypes = [
             ctypes.POINTER(ctypes.c_void_p),
             ctypes.c_uint,
@@ -235,10 +242,12 @@ class LivePcmPlayer:
         self._winmm.waveOutClose.restype = ctypes.c_uint
 
     def _raise_if_error(self, code: int, action: str) -> None:
+        """LivePcmPlayer._raise_if_error는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
         if int(code) != 0:
             raise RuntimeError(f"winmm {action} failed with code {code}")
 
     def _open_device(self) -> None:
+        """LivePcmPlayer._open_device는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
         fmt = WaveFormatEx(self.WAVE_FORMAT_PCM, 1, self.sample_rate, self.sample_rate * 2, 2, 16, 0)
         code = self._winmm.waveOutOpen(
             ctypes.byref(self._handle),
@@ -251,6 +260,7 @@ class LivePcmPlayer:
         self._raise_if_error(code, "waveOutOpen")
 
     def write(self, pcm: np.ndarray) -> None:
+        """LivePcmPlayer.write는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
         if self._closed or pcm.size == 0:
             return
         if self.gain == 1.0:
@@ -273,6 +283,7 @@ class LivePcmPlayer:
                 self.dropped_buffers += 1
 
     def _cleanup_done(self, pending: list[tuple[WaveHdr, ctypes.Array]]) -> list[tuple[WaveHdr, ctypes.Array]]:
+        """완료된 작업 항목을 정리하고 아직 처리 중인 항목만 남깁니다."""
         active: list[tuple[WaveHdr, ctypes.Array]] = []
         for header, buffer in pending:
             if header.dwFlags & self.WHDR_DONE:
@@ -282,6 +293,7 @@ class LivePcmPlayer:
         return active
 
     def _worker(self) -> None:
+        """백그라운드 스레드에서 queue를 소비하며 장치 I/O 작업을 처리합니다."""
         pending: list[tuple[WaveHdr, ctypes.Array]] = []
         try:
             while True:
@@ -311,6 +323,7 @@ class LivePcmPlayer:
                 self._winmm.waveOutUnprepareHeader(self._handle, ctypes.byref(header), ctypes.sizeof(header))
 
     def close(self) -> None:
+        """열어 둔 파일, 오디오 장치, 스레드 등 외부 자원을 정리합니다."""
         if self._closed:
             return
         self._closed = True
@@ -329,6 +342,7 @@ class LivePcmPlayer:
 
 # 함수 설명: 실행 환경이나 출력 형식을 현재 작업에 맞게 설정합니다.
 def configure_utf8_stdio() -> None:
+    """실행 환경, 출력 인코딩, 라이브러리 옵션처럼 본 처리 전에 필요한 설정을 적용합니다."""
     for stream in (sys.stdout, sys.stderr):
         try:
             stream.reconfigure(encoding="utf-8")
@@ -337,6 +351,7 @@ def configure_utf8_stdio() -> None:
 
 
 def should_use_color(mode: str) -> bool:
+    """현재 값이나 실행 환경이 조건을 만족하는지 boolean으로 판정합니다."""
     if mode == "always":
         return True
     if mode == "never" or os.environ.get("NO_COLOR"):
@@ -345,6 +360,7 @@ def should_use_color(mode: str) -> bool:
 
 
 def colorize(text: str, color: str, enabled: bool, *, bold: bool = False, dim: bool = False) -> str:
+    """colorize는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
     if not enabled:
         return text
 
@@ -359,6 +375,7 @@ def colorize(text: str, color: str, enabled: bool, *, bold: bool = False, dim: b
 
 # 함수 설명: 보드나 출력 장치로 제어 명령 또는 데이터 패킷을 전송합니다.
 def send_board_ai_inference_command(ser: serial.Serial, mode: str) -> None:
+    """STM32나 보조 보드로 한 줄 제어 명령을 보내고 전송 버퍼를 비웁니다."""
     if mode == "keep":
         return
 
@@ -369,6 +386,7 @@ def send_board_ai_inference_command(ser: serial.Serial, mode: str) -> None:
 
 
 def send_board_led_mode_command(ser: serial.Serial, mode: str) -> None:
+    """STM32나 보조 보드로 한 줄 제어 명령을 보내고 전송 버퍼를 비웁니다."""
     if mode == "keep":
         return
 
@@ -384,6 +402,7 @@ def send_board_led_mode_command(ser: serial.Serial, mode: str) -> None:
 
 
 def resolve_packet_sample_format(packet: AudioPacket, requested: str) -> int:
+    """내부 상태값을 콘솔이나 그래프에 표시하기 좋은 문자열 또는 라벨로 변환합니다."""
     if requested == "pcm16":
         return AUDIO_FORMAT_PCM16
     if requested == "adc_u16":
@@ -392,6 +411,7 @@ def resolve_packet_sample_format(packet: AudioPacket, requested: str) -> int:
 
 
 def packet_to_centered_debug(packet: AudioPacket, requested: str, adc_center: float, pcm16_gain: float) -> np.ndarray:
+    """보드에서 온 ADC/PCM sample을 표시, 저장, 재생에 맞는 PCM/float 형식으로 변환합니다."""
     sample_format = resolve_packet_sample_format(packet, requested)
     if sample_format == AUDIO_FORMAT_PCM16:
         return packet.adc.view("<i2").astype(np.float32) * float(pcm16_gain)
@@ -399,12 +419,14 @@ def packet_to_centered_debug(packet: AudioPacket, requested: str, adc_center: fl
 
 
 def adc_to_pcm_i16(adc: np.ndarray, adc_center: float) -> np.ndarray:
+    """보드에서 온 ADC/PCM sample을 표시, 저장, 재생에 맞는 PCM/float 형식으로 변환합니다."""
     centered = adc.astype(np.float32) - float(adc_center)
     pcm = np.clip(centered, -32768, 32767)
     return pcm.astype("<i2")
 
 
 def apply_pcm16_gain_i16(pcm: np.ndarray, gain: float) -> np.ndarray:
+    """보드에서 온 ADC/PCM sample을 표시, 저장, 재생에 맞는 PCM/float 형식으로 변환합니다."""
     if float(gain) == 1.0:
         return pcm.astype("<i2", copy=True)
     scaled = np.rint(pcm.astype(np.float32) * float(gain))
@@ -413,6 +435,7 @@ def apply_pcm16_gain_i16(pcm: np.ndarray, gain: float) -> np.ndarray:
 
 
 def packet_to_pcm_i16(packet: AudioPacket, requested: str, adc_center: float, pcm16_gain: float) -> np.ndarray:
+    """보드에서 온 ADC/PCM sample을 표시, 저장, 재생에 맞는 PCM/float 형식으로 변환합니다."""
     sample_format = resolve_packet_sample_format(packet, requested)
     if sample_format == AUDIO_FORMAT_PCM16:
         return apply_pcm16_gain_i16(packet.adc.view("<i2"), pcm16_gain)
@@ -422,13 +445,16 @@ def packet_to_pcm_i16(packet: AudioPacket, requested: str, adc_center: float, pc
 # 클래스 설명: 'MixedPacketReceiver' 관련 데이터를 묶고 전달하거나 상태를 관리하는 구조입니다.
 class MixedPacketReceiver:
     # 함수 설명: '__init__' 단계의 입력을 처리해 다음 단계에 필요한 결과를 반환합니다.
+    """MixedPacketReceiver는 시리얼 byte stream에서 필요한 packet을 동기화하고 파싱합니다."""
     def __init__(self, ser: serial.Serial, max_packet_samples: int, read_chunk_size: int) -> None:
+        """MixedPacketReceiver 인스턴스가 사용할 버퍼, 파일 핸들, 장치 상태를 초기화합니다."""
         self.ser = ser
         self.max_packet_samples = max_packet_samples
         self.read_chunk_size = max(16, int(read_chunk_size))
         self.buffer = bytearray()
 
     def read_from_serial(self, min_size: int) -> None:
+        """MixedPacketReceiver.read_from_serial는 이 파일의 처리 흐름 중 입력값을 검증하거나 변환해 다음 단계로 넘깁니다."""
         waiting = int(getattr(self.ser, "in_waiting", 0) or 0)
         read_size = max(int(min_size), min(waiting, self.read_chunk_size))
         chunk = self.ser.read(read_size)
@@ -437,6 +463,7 @@ class MixedPacketReceiver:
 
     # 함수 설명: 파일, 시리얼, 모델, 설정 등 외부 입력을 읽어 메모리에 올립니다.
     def read_exact(self, size: int, timeout_sec: float = 2.0) -> bytes:
+        """시리얼 포트에서 지정한 byte 수가 모일 때까지 읽고 timeout 시 오류를 냅니다."""
         deadline = time.monotonic() + timeout_sec
 
         while len(self.buffer) < size:
@@ -455,6 +482,7 @@ class MixedPacketReceiver:
 
     # 함수 설명: 파일, 시리얼, 모델, 설정 등 외부 입력을 읽어 메모리에 올립니다.
     def read_magic(self, timeout_sec: float = 2.0) -> int:
+        """시리얼 stream에서 packet 시작을 나타내는 magic word까지 byte를 버리며 동기화합니다."""
         deadline = time.monotonic() + timeout_sec
         while True:
             while len(self.buffer) < 4:
@@ -476,6 +504,7 @@ class MixedPacketReceiver:
 
     # 함수 설명: 파일, 시리얼, 모델, 설정 등 외부 입력을 읽어 메모리에 올립니다.
     def read_packet(self) -> AudioPacket | AiPacket:
+        """동기화된 시리얼 stream에서 header와 payload를 읽어 packet 객체로 변환합니다."""
         magic = self.read_magic()
 
         if magic == AUDIO_MAGIC:
@@ -503,6 +532,7 @@ class MixedPacketReceiver:
 
 # 함수 설명: 사용자에게 보여줄 텍스트나 요약 정보를 생성해 출력합니다.
 def format_label(label: str, color_enabled: bool) -> str:
+    """내부 상태값을 콘솔이나 그래프에 표시하기 좋은 문자열 또는 라벨로 변환합니다."""
     icon = LABEL_ICONS.get(label, "•")
     title = LABEL_TITLES.get(label, label)
     text = f"{icon} {title}"
@@ -510,6 +540,7 @@ def format_label(label: str, color_enabled: bool) -> str:
 
 
 def format_ai_packet(packet: AiPacket, *, color_enabled: bool, show_probabilities: bool = False) -> str:
+    """내부 상태값을 콘솔이나 그래프에 표시하기 좋은 문자열 또는 라벨로 변환합니다."""
     if packet.status != 0:
         status = colorize(f"status={packet.status}", ANSI_RED, color_enabled, bold=True)
         return f"AI#{packet.seq:06d} ❌ {status} audio={packet.audio_seq} dur={packet.duration_ms}ms"
@@ -544,6 +575,7 @@ def update_plot(
     sample_rate: int,
     max_plot_points: int,
 ) -> None:
+    """새로 들어온 데이터에 맞춰 상태, 통계, 그래프 표시를 갱신합니다."""
     waveform, sample_step = rolling.ordered(max_points=max_plot_points)
     if waveform.size:
         seconds = (np.arange(waveform.size, dtype=np.float32) * float(sample_step)) / float(sample_rate)
@@ -586,6 +618,7 @@ def update_plot(
 
 # 함수 설명: 선택된 작업 흐름을 순서대로 실행하고 하위 단계를 호출합니다.
 def run_monitor(args: argparse.Namespace) -> None:
+    """사용자가 선택한 모드의 실제 수집, 테스트, 모니터링 루프를 실행합니다."""
     if serial is None:
         raise RuntimeError("pyserial is required. Install it with: pip install pyserial")
 
@@ -737,6 +770,7 @@ def run_monitor(args: argparse.Namespace) -> None:
 
 # 함수 설명: 명령행 옵션을 정의하고 사용자가 입력한 인자를 파싱합니다.
 def parse_args(argv: list[str]) -> argparse.Namespace:
+    """명령행에서 받을 옵션과 기본값을 정의하고 argparse 객체로 반환합니다."""
     parser = argparse.ArgumentParser(description="Monitor STM32 raw audio and on-board AI prediction packets.")
     parser.add_argument("port", help="serial port, e.g. COM4")
     parser.add_argument("--baudrate", type=int, default=DEFAULT_BAUDRATE)
@@ -814,6 +848,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 # 함수 설명: 스크립트 진입점으로 인자를 읽고 전체 실행 흐름을 호출합니다.
 def main(argv: list[str] | None = None) -> int:
+    """스크립트 진입점으로 CLI 인자를 읽고 전체 실행 흐름을 순서대로 호출합니다."""
     configure_utf8_stdio()
     args = parse_args(sys.argv[1:] if argv is None else argv)
     try:

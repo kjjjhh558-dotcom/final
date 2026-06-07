@@ -1,4 +1,8 @@
-/* 파일 설명: STM32Cube.AI로 생성된 MLP 모델을 초기화하고, 특징 벡터 또는 PCM 프레임을 입력받아 5클래스 호흡 확률을 계산합니다. */
+/*
+ * 파일 설명:
+ *   STM32Cube.AI가 생성한 breath_mlp 네트워크를 초기화하고, DSP feature 또는 PCM stream을 받아 5개 호흡 클래스 확률을 계산합니다.
+ *   boot self-test, golden vector 비교, 실시간 AI ON/OFF 플래그도 이 모듈에서 관리합니다.
+ */
 
 #include "breath_ai_app.h"
 
@@ -181,6 +185,7 @@ breath_ai_status_t BreathAI_PredictPcmI16(
     return BreathAI_Predict(features, probabilities);
 }
 
+/* 함수 설명: 실시간 PCM sample stream을 DSP history에 밀어 넣고 준비된 시점에 예측 확률을 반환합니다. */
 breath_ai_status_t BreathAI_ProcessPcmI16Stream(
     const int16_t *pcm,
     uint32_t sample_count,
@@ -212,6 +217,7 @@ breath_ai_status_t BreathAI_ProcessPcmI16Stream(
     return BreathAI_Predict(features, probabilities);
 }
 
+/* 함수 설명: 실시간 feature history와 filter state를 초기화해 다음 예측을 새 stream처럼 시작합니다. */
 void BreathAI_ResetFeatureStream(void)
 {
     breath_features_reset_filter_state(&s_breath_ai_feature_scratch);
